@@ -1,0 +1,5 @@
+{
+  "name": "BetData Analyze Pro",
+  "description": "High-performance Excel data analyzer capable of handling 300k+ rows with real-time filtering, virtualized scrolling, and Gemini AI insights.",
+  "requestFramePermissions": []
+}
