@@ -1,4 +1,5 @@
-import { handleUpload, list } from '@vercel/blob/client';
+import { handleUpload } from '@vercel/blob/client';
+import { list } from '@vercel/blob';
 
 export const config = {
   runtime: 'node',
@@ -6,7 +7,7 @@ export const config = {
 
 const DATA_FILE = 'main-data.json';
 
-export default async function handler(request, response) {
+export default async function handler(request: any, response: any) {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
 
   if (!token) {
@@ -18,7 +19,7 @@ export default async function handler(request, response) {
   if (request.method === 'GET') {
     try {
         const { blobs } = await list({ token });
-        const dataBlob = blobs.find(b => b.pathname === DATA_FILE);
+        const dataBlob = blobs.find((b: any) => b.pathname === DATA_FILE);
 
         if (!dataBlob) {
             return response.status(404).json({ error: 'Data not found' });
@@ -32,8 +33,8 @@ export default async function handler(request, response) {
         const data = await res.json();
         return response.status(200).json(data);
 
-    } catch (e) {
-        return response.status(500).json({ error: e.message });
+    } catch (e: any) {
+        return response.status(500).json({ error: e.message || 'Unknown error' });
     }
   }
 
@@ -63,8 +64,8 @@ export default async function handler(request, response) {
       });
 
       return response.status(200).json(jsonResponse);
-    } catch (error) {
-      return response.status(400).json({ error: error.message });
+    } catch (error: any) {
+      return response.status(400).json({ error: error.message || 'Upload failed' });
     }
   }
 

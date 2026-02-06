@@ -6,7 +6,7 @@ export const config = {
 
 const USERS_FILE = 'users.json';
 
-export default async function handler(request, response) {
+export default async function handler(request: any, response: any) {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
 
   if (!token) {
@@ -16,12 +16,10 @@ export default async function handler(request, response) {
   try {
     // 1. Get existing users
     let users = [];
-    let blobUrl = null;
     const { blobs } = await list({ token });
-    const userBlob = blobs.find(b => b.pathname === USERS_FILE);
+    const userBlob = blobs.find((b: any) => b.pathname === USERS_FILE);
 
     if (userBlob) {
-      blobUrl = userBlob.url;
       const res = await fetch(userBlob.url);
       if (res.ok) {
         users = await res.json();
@@ -54,8 +52,8 @@ export default async function handler(request, response) {
 
     return response.status(405).json({ error: 'Method not allowed' });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
-    return response.status(500).json({ error: error.message });
+    return response.status(500).json({ error: error.message || 'Unknown error' });
   }
 }
