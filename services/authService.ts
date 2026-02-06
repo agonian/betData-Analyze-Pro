@@ -1,30 +1,20 @@
 import { User } from '../types';
 
-const STORAGE_KEY = 'betdata_users';
-
-// Initialize with default admin if empty
-const initStorage = () => {
-  const users = localStorage.getItem(STORAGE_KEY);
-  if (!users) {
-    const defaultAdmin: User = {
-      username: 'admin',
-      password: 'admin123', // Demo purpose only
-      role: 'admin'
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([defaultAdmin]));
-  }
-};
-
 export const authService = {
-  getUsers: (): User[] => {
-    initStorage();
-    const usersStr = localStorage.getItem(STORAGE_KEY);
-    return usersStr ? JSON.parse(usersStr) : [];
+  // Fetch users from API
+  getUsers: async (): Promise<User[]> => {
+    try {
+      const res = await fetch('/api/users');
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      console.error("Error fetching users:", e);
+      return [];
+    }
   },
 
-  register: (username: string, password: string): { success: boolean; message: string; user?: User } => {
-    initStorage();
-    const users = authService.getUsers();
+  register: async (username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
+    const users = await authService.getUsers();
     
     if (users.find(u => u.username === username)) {
       return { success: false, message: 'Bu kullanıcı adı zaten alınmış.' };
@@ -36,14 +26,22 @@ export const authService = {
       role: 'free'
     };
 
-    users.push(newUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-    return { success: true, message: 'Kayıt başarılı.', user: newUser };
+    const newUsers = [...users, newUser];
+
+    try {
+        await fetch('/api/users', {
+            method: 'POST',
+            body: JSON.stringify(newUsers),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        return { success: true, message: 'Kayıt başarılı.', user: newUser };
+    } catch (e) {
+        return { success: false, message: 'Sunucu hatası.' };
+    }
   },
 
-  login: (username: string, password: string): { success: boolean; message: string; user?: User } => {
-    initStorage();
-    const users = authService.getUsers();
+  login: async (username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
+    const users = await authService.getUsers();
     const user = users.find(u => u.username === username && u.password === password);
 
     if (!user) {
@@ -54,54 +52,61 @@ export const authService = {
       return { success: false, message: 'Bu hesap yasaklanmıştır. Yönetici ile iletişime geçin.' };
     }
 
-    // Check expiration logic during login
+    // Check expiration logic
     if (user.role === 'premium' && user.premiumExpiresAt && Date.now() > user.premiumExpiresAt) {
-        user.role = 'free';
-        user.premiumExpiresAt = undefined;
-        authService.updateUser(user);
-        return { success: true, message: 'Premium süreniz doldu, ücretsiz plana geçirildiniz.', user };
+        // Update user on server
+        const updatedUser = { ...user, role: 'free' as const, premiumExpiresAt: undefined };
+        await authService.updateUser(updatedUser);
+        return { success: true, message: 'Premium süreniz doldu, ücretsiz plana geçirildiniz.', user: updatedUser };
     }
 
     return { success: true, message: 'Giriş başarılı.', user };
   },
 
-  updateUser: (updatedUser: User): boolean => {
-    const users = authService.getUsers();
+  updateUser: async (updatedUser: User): Promise<boolean> => {
+    const users = await authService.getUsers();
     const index = users.findIndex(u => u.username === updatedUser.username);
     if (index !== -1) {
-      users[index] = { ...users[index], ...updatedUser }; // Merge to preserve other fields
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+      users[index] = { ...users[index], ...updatedUser };
+      await fetch('/api/users', {
+          method: 'POST',
+          body: JSON.stringify(users),
+          headers: { 'Content-Type': 'application/json' }
+      });
       return true;
     }
     return false;
   },
 
-  deleteUser: (username: string): boolean => {
-    let users = authService.getUsers();
+  deleteUser: async (username: string): Promise<boolean> => {
+    let users = await authService.getUsers();
     const initialLength = users.length;
     users = users.filter(u => u.username !== username);
     
     if (users.length < initialLength) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+        await fetch('/api/users', {
+            method: 'POST',
+            body: JSON.stringify(users),
+            headers: { 'Content-Type': 'application/json' }
+        });
         return true;
     }
     return false;
   },
 
-  // Helper to add time
-  addPremiumTime: (username: string, durationMinutes: number) => {
-    const users = authService.getUsers();
+  addPremiumTime: async (username: string, durationMinutes: number) => {
+    const users = await authService.getUsers();
     const user = users.find(u => u.username === username);
     if (user) {
         const now = Date.now();
-        // If already premium and not expired, add to existing time, else start from now
         const startTime = (user.role === 'premium' && user.premiumExpiresAt && user.premiumExpiresAt > now) 
             ? user.premiumExpiresAt 
             : now;
             
         user.role = 'premium';
         user.premiumExpiresAt = startTime + (durationMinutes * 60 * 1000);
-        authService.updateUser(user);
+        
+        await authService.updateUser(user);
     }
   }
 };

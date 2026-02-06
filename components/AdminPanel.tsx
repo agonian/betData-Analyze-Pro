@@ -11,26 +11,29 @@ interface ModalConfig {
 
 export const AdminPanel: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
-  const [selectedDuration, setSelectedDuration] = useState<number>(1); // Default 1 min
+  const [selectedDuration, setSelectedDuration] = useState<number>(1);
+  const [isLoading, setIsLoading] = useState(false);
   
-  // Custom Modal State
   const [modalConfig, setModalConfig] = useState<ModalConfig>({ 
     isOpen: false, 
     type: null, 
     user: null 
   });
 
-  const loadUsers = () => {
-    // Force refresh from storage
-    const allUsers = authService.getUsers();
-    setUsers(allUsers.filter(u => u.username !== 'admin'));
+  const loadUsers = async () => {
+    setIsLoading(true);
+    try {
+        const allUsers = await authService.getUsers();
+        setUsers(allUsers.filter(u => u.username !== 'admin'));
+    } finally {
+        setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     loadUsers();
   }, []);
 
-  // Open Modals
   const requestDelete = (user: User) => {
     setModalConfig({ isOpen: true, type: 'delete', user });
   };
@@ -43,12 +46,12 @@ export const AdminPanel: React.FC = () => {
     setModalConfig({ isOpen: false, type: null, user: null });
   };
 
-  // Execute Action
-  const handleConfirmAction = () => {
+  const handleConfirmAction = async () => {
     if (!modalConfig.user) return;
+    setIsLoading(true);
 
     if (modalConfig.type === 'delete') {
-        const success = authService.deleteUser(modalConfig.user.username);
+        const success = await authService.deleteUser(modalConfig.user.username);
         if (success) {
             setUsers(prev => prev.filter(u => u.username !== modalConfig.user!.username));
         } else {
@@ -57,20 +60,22 @@ export const AdminPanel: React.FC = () => {
     } else if (modalConfig.type === 'ban') {
         const user = modalConfig.user;
         const newRole = user.role === 'banned' ? 'free' : 'banned';
-        const success = authService.updateUser({ ...user, role: newRole });
+        const success = await authService.updateUser({ ...user, role: newRole });
         if (success) {
             setUsers(prev => prev.map(u => u.username === user.username ? { ...u, role: newRole } : u));
         } else {
             alert("Kullanıcı durumu güncellenemedi.");
         }
     }
+    setIsLoading(false);
     closeModal();
   };
 
-  const handleGrantPremium = (username: string) => {
-    authService.addPremiumTime(username, selectedDuration);
-    loadUsers(); // Reload to get calculated expirations
-    // Optional: show a small toast notification here instead of alert, but alert works for now
+  const handleGrantPremium = async (username: string) => {
+    setIsLoading(true);
+    await authService.addPremiumTime(username, selectedDuration);
+    await loadUsers();
+    setIsLoading(false);
   };
 
   const formatTime = (timestamp?: number) => {
@@ -104,7 +109,8 @@ export const AdminPanel: React.FC = () => {
         <button 
             type="button"
             onClick={loadUsers} 
-            className="p-2 hover:bg-slate-700 rounded-full transition-colors"
+            disabled={isLoading}
+            className={`p-2 hover:bg-slate-700 rounded-full transition-colors ${isLoading ? 'animate-spin' : ''}`}
             title="Listeyi Yenile"
         >
             <RefreshCcw size={16} />
@@ -125,7 +131,9 @@ export const AdminPanel: React.FC = () => {
             <tbody className="divide-y divide-gray-100">
                 {users.length === 0 ? (
                     <tr>
-                        <td colSpan={5} className="text-center py-8 text-gray-400">Henüz kayıtlı üye yok.</td>
+                        <td colSpan={5} className="text-center py-8 text-gray-400">
+                            {isLoading ? 'Yükleniyor...' : 'Henüz kayıtlı üye yok.'}
+                        </td>
                     </tr>
                 ) : users.map(user => (
                     <tr key={user.username} className="hover:bg-gray-50">
@@ -161,7 +169,8 @@ export const AdminPanel: React.FC = () => {
                                 <button 
                                     type="button"
                                     onClick={() => handleGrantPremium(user.username)}
-                                    className="p-1.5 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                                    disabled={isLoading}
+                                    className="p-1.5 bg-green-500 text-white rounded hover:bg-green-600 transition-colors disabled:opacity-50"
                                     title="Süre Ekle"
                                 >
                                     <CheckCircle2 size={16} />
@@ -173,7 +182,8 @@ export const AdminPanel: React.FC = () => {
                                 <button 
                                     type="button"
                                     onClick={() => requestBan(user)}
-                                    className={`p-1.5 rounded transition-colors ${user.role === 'banned' ? 'bg-gray-500 text-white hover:bg-gray-600' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                                    disabled={isLoading}
+                                    className={`p-1.5 rounded transition-colors disabled:opacity-50 ${user.role === 'banned' ? 'bg-gray-500 text-white hover:bg-gray-600' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
                                     title={user.role === 'banned' ? "Yasağı Kaldır" : "Yasakla"}
                                 >
                                     <Ban size={16} />
@@ -181,7 +191,8 @@ export const AdminPanel: React.FC = () => {
                                 <button 
                                     type="button"
                                     onClick={() => requestDelete(user)}
-                                    className="p-1.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors"
+                                    disabled={isLoading}
+                                    className="p-1.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors disabled:opacity-50"
                                     title="Kullanıcıyı Sil"
                                 >
                                     <Trash2 size={16} />
@@ -195,7 +206,6 @@ export const AdminPanel: React.FC = () => {
       </div>
     </div>
 
-    {/* Custom Confirmation Modal */}
     {modalConfig.isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 scale-100 animate-in zoom-in-95 duration-200 relative">
@@ -245,13 +255,14 @@ export const AdminPanel: React.FC = () => {
                         </button>
                         <button 
                             onClick={handleConfirmAction}
-                            className={`flex-1 px-4 py-2.5 text-white rounded-lg font-bold transition-colors shadow-lg ${
+                            disabled={isLoading}
+                            className={`flex-1 px-4 py-2.5 text-white rounded-lg font-bold transition-colors shadow-lg disabled:opacity-50 ${
                                 modalConfig.type === 'delete' 
                                     ? 'bg-red-600 hover:bg-red-700 shadow-red-500/30' 
                                     : 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30'
                             }`}
                         >
-                            {modalConfig.type === 'delete' ? 'Evet, Sil' : 'Onayla'}
+                            {isLoading ? 'İşleniyor...' : (modalConfig.type === 'delete' ? 'Evet, Sil' : 'Onayla')}
                         </button>
                     </div>
                 </div>

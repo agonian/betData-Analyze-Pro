@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { VirtualTable } from './components/VirtualTable';
-import { SmartAssistant } from './components/SmartAssistant';
 import { Auth } from './components/Auth';
 import { UpgradeAlert } from './components/UpgradeAlert';
 import { AdminPanel } from './components/AdminPanel';
@@ -10,7 +9,7 @@ import { parseExcelFile } from './utils/excelParser';
 import { MatchData, User } from './types';
 import { authService } from './services/authService';
 import { dataService } from './services/dataService';
-import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X } from 'lucide-react';
+import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X, Download, Cloud } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -27,7 +26,6 @@ const App: React.FC = () => {
   // State for timer
   const [now, setNow] = useState(Date.now());
 
-  // 1. Timer Tick Effect
   useEffect(() => {
      const interval = setInterval(() => {
          setNow(Date.now());
@@ -35,39 +33,27 @@ const App: React.FC = () => {
      return () => clearInterval(interval);
   }, []);
 
-  // 2. Premium Expiration Check Effect
+  // Load Data on Login
   useEffect(() => {
-      if (user && user.role === 'premium' && user.premiumExpiresAt) {
-          if (now > user.premiumExpiresAt) {
-              const updatedUser: User = { ...user, role: 'free', premiumExpiresAt: undefined };
-              // Persist change
-              authService.updateUser(updatedUser);
-              // Update state
-              setUser(updatedUser);
-              alert("Premium süreniz doldu. Demo versiyona geçiş yapıldı.");
-          }
-      }
-  }, [now, user]);
-
-  // 3. Load Data from DB on Login
-  useEffect(() => {
-    const loadPersistedData = async () => {
+    const loadCloudData = async () => {
       if (user) {
         setIsInitializingData(true);
         try {
+          // Fetch from Cloud Blob
           const savedData = await dataService.getAllData();
           if (savedData && savedData.length > 0) {
             setMasterData(savedData);
           }
         } catch (err) {
           console.error("Veri yüklenemedi:", err);
+          setError("Sunucudan veri çekilemedi.");
         } finally {
           setIsInitializingData(false);
         }
       }
     };
 
-    loadPersistedData();
+    loadCloudData();
   }, [user]);
 
   const handleLogin = (userData: User) => {
@@ -76,40 +62,31 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     setUser(null);
-    setMasterData([]); // Clear memory, but DB remains
+    setMasterData([]);
   };
 
   const handleFileUpload = async (file: File) => {
     setIsLoading(true);
     setError(null);
     try {
-      setTimeout(async () => {
-        try {
-            const parsedData = await parseExcelFile(file);
-            
-            if (isAppendMode) {
-                // Append Mode
-                await dataService.appendData(parsedData);
-                // Refresh data from DB to ensure IDs are correct and we have everything
-                const allData = await dataService.getAllData();
-                setMasterData(allData);
-                alert(`${parsedData.length} satır başarıyla eklendi.`);
-            } else {
-                // Overwrite Mode
-                await dataService.saveData(parsedData);
-                setMasterData(parsedData);
-            }
-            
-            setIsLoading(false);
-        } catch (err) {
-            console.error(err);
-            setError("Dosya işlenirken bir hata oluştu. Lütfen formatı kontrol edin.");
-            setIsLoading(false);
+        const parsedData = await parseExcelFile(file);
+        
+        if (isAppendMode) {
+            await dataService.appendData(parsedData);
+            // Re-fetch to sync
+            const allData = await dataService.getAllData();
+            setMasterData(allData);
+            alert(`${parsedData.length} satır başarıyla eklendi ve buluta kaydedildi.`);
+        } else {
+            await dataService.saveData(parsedData);
+            setMasterData(parsedData);
+            alert("Veriler başarıyla buluta yüklendi.");
         }
-      }, 100);
     } catch (err) {
-      setError("Beklenmedik bir hata oluştu.");
-      setIsLoading(false);
+        console.error(err);
+        setError("Dosya işlenirken veya sunucuya yüklenirken hata oluştu.");
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -162,23 +139,29 @@ const App: React.FC = () => {
       }
   };
 
-  // Logic to determine what data the user sees
+  const handleExport = async () => {
+      if (masterData.length === 0) return;
+      try {
+          await dataService.exportToExcel();
+      } catch (e) {
+          console.error(e);
+          alert("Dışa aktarma başarısız.");
+      }
+  };
+
   const displayedData = useMemo(() => {
     if (!user) return [];
     if (user.role === 'admin' || user.role === 'premium') {
         return masterData;
     }
-    // Free user gets limited data
     return masterData.slice(0, 50);
   }, [user, masterData]);
 
-  // Calculate time remaining string
   const timeRemaining = useMemo(() => {
       if(user && user.role === 'premium' && user.premiumExpiresAt) {
           const diff = Math.max(0, user.premiumExpiresAt - now);
           const minutes = Math.floor(diff / 60000);
           const seconds = Math.floor((diff % 60000) / 1000);
-          
           if(minutes > 60) {
               const hours = Math.floor(minutes / 60);
               return `${hours} Saat Kaldı`;
@@ -188,7 +171,6 @@ const App: React.FC = () => {
       return null;
   }, [user, now]);
 
-  // Conditional Return for Auth Screen
   if (!user) {
     return <Auth onLogin={handleLogin} />;
   }
@@ -211,7 +193,6 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-             {/* Timer Badge for Premium */}
              {user.role === 'premium' && timeRemaining && (
                  <div className="hidden md:flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full text-xs font-bold shadow-lg shadow-amber-500/20 animate-pulse">
                      <Clock size={12} />
@@ -219,7 +200,6 @@ const App: React.FC = () => {
                  </div>
              )}
 
-             {/* Role Badge */}
              <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 border ${
                  user.role === 'admin' ? 'bg-red-500/10 border-red-500/50 text-red-400' : 
                  user.role === 'premium' ? 'bg-amber-500/10 border-amber-500/50 text-amber-400' : 
@@ -247,7 +227,6 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 max-w-[98%] w-full mx-auto py-6 px-4 pb-32">
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center text-red-700">
@@ -256,20 +235,17 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Admin Dashboard */}
         {user.role === 'admin' && (
             <div className="flex flex-col gap-6">
                 <AdminPanel />
                 
-                {/* Data Management Section */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-6 animate-in fade-in slide-in-from-top-4 duration-500">
                     <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Database className="text-blue-600" size={24} />
-                        Veri Seti İşlemleri
+                        <Cloud className="text-blue-600" size={24} />
+                        Bulut Veri İşlemleri (Vercel Blob)
                     </h2>
                     
                     <div className="flex flex-col md:flex-row gap-6">
-                        {/* Left: Upload */}
                         <div className="flex-1">
                             <div className="flex items-center justify-between mb-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
                                 <span className="text-sm font-bold text-gray-700 flex items-center gap-2">
@@ -289,36 +265,24 @@ const App: React.FC = () => {
                             <FileUpload onFileUpload={handleFileUpload} isLoading={isLoading} />
                         </div>
 
-                        {/* Right: Maintenance Actions */}
                         <div className="w-full md:w-64 flex flex-col gap-3">
                              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 h-full flex flex-col justify-center">
                                  <h3 className="font-bold text-sm text-gray-500 uppercase mb-4 tracking-wider">Bakım Araçları</h3>
-                                 
                                  <button
-                                     onClick={() => setIsManualModalOpen(true)}
-                                     disabled={isLoading}
-                                     className="w-full mb-3 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-medium transition-colors border border-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                     onClick={handleExport}
+                                     disabled={masterData.length === 0}
+                                     className="w-full mb-3 flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-medium transition-colors border border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                  >
-                                     <PenLine size={18} />
-                                     Manuel Veri Ekle
+                                     <Download size={18} />
+                                     Verileri Yedekle
                                  </button>
-
-                                 <button
-                                     onClick={handleRemoveDuplicates}
-                                     disabled={masterData.length === 0 || isLoading}
-                                     className="w-full mb-3 flex items-center justify-center gap-2 px-4 py-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg font-medium transition-colors border border-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                 >
-                                     <Eraser size={18} />
-                                     Yinelenenleri Sil
-                                 </button>
-
                                  <button 
                                      onClick={() => setShowClearConfirm(true)}
                                      disabled={masterData.length === 0 || isLoading}
                                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg font-medium transition-colors border border-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                  >
                                      <Trash2 size={18} />
-                                     Tüm Veriyi Temizle
+                                     Bulutu Temizle
                                  </button>
                              </div>
                         </div>
@@ -327,14 +291,12 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* Data Loading State */}
         {isInitializingData ? (
              <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8">
                  <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
-                 <p className="text-gray-500 font-medium">Veriler yükleniyor...</p>
+                 <p className="text-gray-500 font-medium">Bulut veritabanından veriler yükleniyor...</p>
              </div>
         ) : (
-             /* Data Display Logic */
             masterData.length === 0 ? (
             user.role === 'admin' ? null : (
                 <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-200 mt-8">
@@ -343,14 +305,13 @@ const App: React.FC = () => {
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 mb-2">Veri Bekleniyor</h3>
                     <p className="text-gray-500 max-w-md">
-                        Şu anda sistemde aktif bir veri seti bulunmamaktadır. Yöneticinin veri yüklemesini bekleyin.
+                        Sistemde henüz aktif bir veri seti bulunmamaktadır. Yönetici veri yüklediğinde burada otomatik olarak görünecektir.
                     </p>
                 </div>
             )
             ) : (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col gap-4">
                 <VirtualTable data={displayedData} isDemo={user.role === 'free'} />
-                
                 <div className="mt-2 text-center text-xs text-gray-400">
                 {user.role === 'free' 
                     ? `Demo Modu: ${masterData.length} kayıttan sadece 50 tanesi gösteriliyor.`
@@ -362,13 +323,8 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Conditionally render Upgrade Alert for free users if data exists */}
       {!isInitializingData && user.role === 'free' && masterData.length > 0 && <UpgradeAlert />}
 
-      {/* AI Assistant - Available for everyone but context differs based on data visibility */}
-      {!isInitializingData && masterData.length > 0 && <SmartAssistant data={displayedData} />}
-
-      {/* Manual Entry Modal */}
       {isManualModalOpen && (
           <ManualEntryModal 
             onClose={() => setIsManualModalOpen(false)} 
@@ -376,7 +332,6 @@ const App: React.FC = () => {
           />
       )}
 
-      {/* Clear Confirmation Modal */}
       {showClearConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 scale-100 animate-in zoom-in-95 duration-200 relative">
@@ -391,16 +346,13 @@ const App: React.FC = () => {
                     <div className="p-4 rounded-full mb-4 bg-red-100 text-red-600">
                         <Trash2 size={32} />
                     </div>
-                    
                     <h3 className="text-xl font-bold text-gray-900 mb-2">
-                        Verileri Temizle
+                        Bulut Verisini Sil
                     </h3>
-                    
                     <p className="text-gray-500 mb-6">
-                        Tüm veri tabanındaki maç verilerini kalıcı olarak silmek istediğinize emin misiniz? <br/>
-                        <span className="text-red-500 text-xs font-bold mt-1 block">Bu işlem geri alınamaz!</span>
+                        Sunucudaki tüm maç verilerini kalıcı olarak silmek istediğinize emin misiniz? <br/>
+                        <span className="text-red-500 text-xs font-bold mt-1 block">Bu işlem tüm kullanıcılardan veriyi siler!</span>
                     </p>
-                    
                     <div className="flex gap-3 w-full">
                         <button 
                             onClick={() => setShowClearConfirm(false)}

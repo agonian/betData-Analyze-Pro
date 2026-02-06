@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { LogIn, UserPlus, ShieldCheck, Database, AlertCircle } from 'lucide-react';
+import { LogIn, UserPlus, ShieldCheck, Database, AlertCircle, Loader2 } from 'lucide-react';
 import { authService } from '../services/authService';
 
 interface AuthProps {
@@ -13,35 +13,44 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
+    setIsLoading(true);
 
-    if (isLogin) {
-        // Login Logic
-        const result = authService.login(username, password);
-        if (result.success && result.user) {
-            onLogin(result.user);
+    try {
+        if (isLogin) {
+            // Login Logic
+            const result = await authService.login(username, password);
+            if (result.success && result.user) {
+                onLogin(result.user);
+            } else {
+                setError(result.message);
+            }
         } else {
-            setError(result.message);
+            // Register Logic
+            if (password.length < 3) {
+                setError('Şifre en az 3 karakter olmalıdır.');
+                setIsLoading(false);
+                return;
+            }
+            
+            const result = await authService.register(username, password);
+            if (result.success) {
+                setSuccessMsg('Kayıt başarılı! Şimdi giriş yapabilirsiniz.');
+                setIsLogin(true);
+                setPassword(''); 
+            } else {
+                setError(result.message);
+            }
         }
-    } else {
-        // Register Logic
-        if (password.length < 3) {
-            setError('Şifre en az 3 karakter olmalıdır.');
-            return;
-        }
-        
-        const result = authService.register(username, password);
-        if (result.success) {
-            setSuccessMsg('Kayıt başarılı! Şimdi giriş yapabilirsiniz.');
-            setIsLogin(true);
-            setPassword(''); 
-        } else {
-            setError(result.message);
-        }
+    } catch (err) {
+        setError("Bir hata oluştu. Lütfen bağlantınızı kontrol edin.");
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -86,6 +95,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         onChange={(e) => setUsername(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                         placeholder="Kullanıcı adınız"
+                        disabled={isLoading}
                     />
                 </div>
                 <div>
@@ -97,6 +107,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                         placeholder="••••••••"
+                        disabled={isLoading}
                     />
                 </div>
 
@@ -116,15 +127,16 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
                 <button 
                     type="submit"
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
+                    disabled={isLoading}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50"
                 >
-                    {isLogin ? <LogIn size={18} /> : <UserPlus size={18} />}
+                    {isLoading ? <Loader2 size={18} className="animate-spin" /> : (isLogin ? <LogIn size={18} /> : <UserPlus size={18} />)}
                     {isLogin ? 'Giriş Yap' : 'Kayıt Ol'}
                 </button>
             </form>
 
             <div className="mt-6 pt-6 border-t border-gray-100">
-                <div className="text-xs text-center text-gray-400 mb-4">Demo Hesap (Test İçin)</div>
+                <div className="text-xs text-center text-gray-400 mb-4">Demo Hesap</div>
                 <div className="flex justify-center">
                     <button 
                         onClick={() => { setUsername('admin'); setPassword('admin123'); }}

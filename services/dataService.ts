@@ -1,121 +1,74 @@
 import { MatchData } from '../types';
+import * as XLSX from 'xlsx';
+import { upload } from '@vercel/blob/client';
 
-const DB_NAME = 'BetDataDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'matches';
+const DATA_FILE_NAME = 'main-data.json';
 
 export const dataService = {
-  openDB: (): Promise<IDBDatabase> => {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        }
-      };
-
-      request.onsuccess = (event) => {
-        resolve((event.target as IDBOpenDBRequest).result);
-      };
-
-      request.onerror = (event) => {
-        reject((event.target as IDBOpenDBRequest).error);
-      };
-    });
-  },
-
-  // Overwrite existing data
+  // Save Data (Uploads to Vercel Blob)
   saveData: async (data: MatchData[]): Promise<void> => {
-    const db = await dataService.openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
+    try {
+      // 1. Convert data to Blob
+      const jsonString = JSON.stringify(data);
+      const file = new File([jsonString], DATA_FILE_NAME, { type: 'application/json' });
 
-      const clearRequest = store.clear();
+      // 2. Upload using client SDK (bypasses server payload limits)
+      // We call our /api/data endpoint to get the permission token
+      const newBlob = await upload(DATA_FILE_NAME, file, {
+        access: 'public',
+        handleUploadUrl: '/api/data',
+      });
 
-      clearRequest.onsuccess = () => {
-        data.forEach(item => {
-          store.put(item);
-        });
-      };
-
-      transaction.oncomplete = () => {
-        resolve();
-      };
-
-      transaction.onerror = (event) => {
-        reject((event.target as IDBTransaction).error);
-      };
-    });
+      console.log("Data saved to:", newBlob.url);
+      return;
+    } catch (error) {
+      console.error("Save Error:", error);
+      throw new Error("Veri kaydedilirken hata oluştu.");
+    }
   },
 
-  // Append to existing data
+  // Append Data (Downloads, Appends, Re-uploads)
   appendData: async (newData: MatchData[]): Promise<void> => {
-    const db = await dataService.openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
+    try {
+      const currentData = await dataService.getAllData();
       
-      // Get the current count to determine starting ID
-      const countRequest = store.count();
+      // Determine new IDs
+      const startId = currentData.length > 0 ? Math.max(...currentData.map(d => d.id)) + 1 : 0;
+      
+      const preparedNewData = newData.map((item, index) => ({
+          ...item,
+          id: startId + index
+      }));
 
-      countRequest.onsuccess = () => {
-        const currentCount = countRequest.result;
-        
-        newData.forEach((item, index) => {
-            // Re-assign ID to ensure continuity
-            const itemToSave = { ...item, id: currentCount + index };
-            store.put(itemToSave);
-        });
-      };
-
-      transaction.oncomplete = () => {
-        resolve();
-      };
-
-      transaction.onerror = (event) => {
-        reject((event.target as IDBTransaction).error);
-      };
-    });
+      const combinedData = [...currentData, ...preparedNewData];
+      await dataService.saveData(combinedData);
+    } catch (error) {
+       console.error("Append Error:", error);
+       throw error;
+    }
   },
 
+  // Get All Data (Fetches from API which reads Blob)
   getAllData: async (): Promise<MatchData[]> => {
-    const db = await dataService.openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.getAll();
-
-      request.onsuccess = () => {
-        resolve(request.result || []);
-      };
-
-      request.onerror = (event) => {
-        reject((event.target as IDBRequest).error);
-      };
-    });
+    try {
+      const response = await fetch('/api/data');
+      if (response.status === 404) {
+          return []; // No data yet
+      }
+      if (!response.ok) {
+          throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error("Fetch Error:", error);
+      return [];
+    }
   },
 
   clearData: async (): Promise<void> => {
-    const db = await dataService.openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
-      
-      // We don't need to listen to request.onsuccess here, 
-      // transaction.oncomplete is safer for determining when the commit happens.
-      store.clear();
-
-      transaction.oncomplete = () => {
-        resolve();
-      };
-
-      transaction.onerror = (event) => {
-        reject((event.target as IDBRequest).error);
-      };
-    });
+     // Save empty array
+     await dataService.saveData([]);
   },
 
   removeDuplicates: async (): Promise<{ removedCount: number }> => {
@@ -123,12 +76,9 @@ export const dataService = {
     const uniqueMap = new Map<string, MatchData>();
     let originalCount = allData.length;
 
-    // Filter using a Map (Key = stringified content excluding ID)
     allData.forEach(item => {
-        // Create a signature of the object excluding the ID
         const { id, ...rest } = item;
         const signature = JSON.stringify(rest);
-        
         if (!uniqueMap.has(signature)) {
             uniqueMap.set(signature, item);
         }
@@ -138,16 +88,24 @@ export const dataService = {
     const removedCount = originalCount - uniqueData.length;
 
     if (removedCount > 0) {
-        // Re-index IDs to be sequential (0 to N)
         const reIndexedData = uniqueData.map((item, index) => ({
             ...item,
             id: index
         }));
-        
-        // Save the clean data
         await dataService.saveData(reIndexedData);
     }
 
     return { removedCount };
+  },
+
+  exportToExcel: async (fileName: string = 'BetData_Export.xlsx'): Promise<void> => {
+    const data = await dataService.getAllData();
+    if (data.length === 0) return;
+
+    const cleanData = data.map(({ id, ...rest }) => rest);
+    const worksheet = XLSX.utils.json_to_sheet(cleanData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Maç Verileri");
+    XLSX.writeFile(workbook, fileName);
   }
 };
