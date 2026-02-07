@@ -1,7 +1,7 @@
 import { put, list } from '@vercel/blob';
 
 export const config = {
-  runtime: 'nodejs',
+  runtime: 'node',
 };
 
 const USERS_FILE = 'users.json';

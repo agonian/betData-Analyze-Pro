@@ -124,7 +124,7 @@ export const AdminPanel: React.FC = () => {
                     <th className="px-4 py-3">Kullanıcı Adı</th>
                     <th className="px-4 py-3">Durum</th>
                     <th className="px-4 py-3">Premium Bitiş</th>
-                    <th className="px-4 py-3">Süre Ekle</th>
+                    <th className="px-4 py-3">Süre Yönetimi</th>
                     <th className="px-4 py-3 text-right">İşlemler</th>
                 </tr>
             </thead>
@@ -156,22 +156,29 @@ export const AdminPanel: React.FC = () => {
                         <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                                 <select 
-                                    className="border border-gray-300 rounded px-2 py-1 text-xs"
+                                    className="border border-gray-300 rounded px-2 py-1 text-xs max-w-[120px]"
                                     onChange={(e) => setSelectedDuration(Number(e.target.value))}
                                     value={selectedDuration}
                                 >
-                                    <option value={1}>1 Dakika (Test)</option>
-                                    <option value={1440}>1 Gün</option>
-                                    <option value={10080}>1 Hafta</option>
-                                    <option value={43200}>1 Ay</option>
-                                    <option value={129600}>3 Ay (90 Gün)</option>
+                                    <optgroup label="Ekle">
+                                        <option value={1}>+1 Dakika</option>
+                                        <option value={1440}>+1 Gün</option>
+                                        <option value={10080}>+1 Hafta</option>
+                                        <option value={43200}>+1 Ay</option>
+                                        <option value={129600}>+3 Ay</option>
+                                    </optgroup>
+                                    <optgroup label="Çıkar">
+                                        <option value={-1440}>-1 Gün</option>
+                                        <option value={-10080}>-1 Hafta</option>
+                                        <option value={-43200}>-1 Ay</option>
+                                    </optgroup>
                                 </select>
                                 <button 
                                     type="button"
                                     onClick={() => handleGrantPremium(user.username)}
                                     disabled={isLoading}
-                                    className="p-1.5 bg-green-500 text-white rounded hover:bg-green-600 transition-colors disabled:opacity-50"
-                                    title="Süre Ekle"
+                                    className="p-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50"
+                                    title="Süreyi Uygula"
                                 >
                                     <CheckCircle2 size={16} />
                                 </button>

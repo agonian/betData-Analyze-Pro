@@ -9,13 +9,13 @@ import { parseExcelFile } from './utils/excelParser';
 import { MatchData, User } from './types';
 import { authService } from './services/authService';
 import { dataService } from './services/dataService';
-import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X, Download, Cloud } from 'lucide-react';
+import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X, Download, Cloud, PlayCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [masterData, setMasterData] = useState<MatchData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isInitializingData, setIsInitializingData] = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false); // New state to control bandwidth usage
   const [error, setError] = useState<string | null>(null);
   
   // Admin Options
@@ -33,36 +33,36 @@ const App: React.FC = () => {
      return () => clearInterval(interval);
   }, []);
 
-  // Load Data on Login
-  useEffect(() => {
-    const loadCloudData = async () => {
-      if (user) {
-        setIsInitializingData(true);
-        try {
-          // Fetch from Cloud Blob
-          const savedData = await dataService.getAllData();
-          if (savedData && savedData.length > 0) {
-            setMasterData(savedData);
-          }
-        } catch (err) {
-          console.error("Veri yüklenemedi:", err);
-          setError("Sunucudan veri çekilemedi.");
-        } finally {
-          setIsInitializingData(false);
-        }
-      }
-    };
-
-    loadCloudData();
-  }, [user]);
+  // REMOVED: Automatic data loading useEffect to save Vercel bandwidth
 
   const handleLogin = (userData: User) => {
     setUser(userData);
+    setIsDataLoaded(false); // Reset on login
+    setMasterData([]);
   };
 
   const handleLogout = () => {
     setUser(null);
     setMasterData([]);
+    setIsDataLoaded(false);
+  };
+
+  // Manual Trigger to Load Data
+  const handleLoadData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const savedData = await dataService.getAllData();
+      if (savedData && savedData.length > 0) {
+        setMasterData(savedData);
+      }
+      setIsDataLoaded(true);
+    } catch (err) {
+      console.error("Veri yüklenemedi:", err);
+      setError("Sunucudan veri çekilemedi.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleFileUpload = async (file: File) => {
@@ -72,16 +72,30 @@ const App: React.FC = () => {
         const parsedData = await parseExcelFile(file);
         
         if (isAppendMode) {
-            await dataService.appendData(parsedData);
-            // Re-fetch to sync
-            const allData = await dataService.getAllData();
-            setMasterData(allData);
+            // Must have existing data loaded to append correctly with IDs
+            if (!isDataLoaded && masterData.length === 0) {
+               // Try to load first invisibly or warn? Let's just append to empty if not loaded but that risks ID collision if we don't know last ID.
+               // Better strategy: Load current data first if not loaded
+               try {
+                  const currentData = await dataService.getAllData();
+                  const startId = currentData.length > 0 ? Math.max(...currentData.map(d => d.id)) + 1 : 0;
+                  const preparedNewData = parsedData.map((item, index) => ({ ...item, id: startId + index }));
+                  const combinedData = [...currentData, ...preparedNewData];
+                  await dataService.saveData(combinedData);
+                  setMasterData(combinedData);
+               } catch(e) { throw e; }
+            } else {
+               await dataService.appendData(parsedData);
+               const allData = await dataService.getAllData(); // Sync
+               setMasterData(allData);
+            }
             alert(`${parsedData.length} satır başarıyla eklendi ve buluta kaydedildi.`);
         } else {
             await dataService.saveData(parsedData);
             setMasterData(parsedData);
             alert("Veriler başarıyla buluta yüklendi.");
         }
+        setIsDataLoaded(true);
     } catch (err) {
         console.error(err);
         setError("Dosya işlenirken veya sunucuya yüklenirken hata oluştu.");
@@ -112,6 +126,7 @@ const App: React.FC = () => {
           setMasterData(freshData);
           setIsManualModalOpen(false);
           alert("Kayıt başarıyla eklendi.");
+          setIsDataLoaded(true);
       } catch(e) {
           console.error(e);
           setError("Manuel kayıt eklenirken hata oluştu.");
@@ -140,7 +155,27 @@ const App: React.FC = () => {
   };
 
   const handleExport = async () => {
-      if (masterData.length === 0) return;
+      // If data isn't loaded to memory yet, fetch it first
+      let dataToExport = masterData;
+      if (!isDataLoaded || masterData.length === 0) {
+         setIsLoading(true);
+         try {
+            dataToExport = await dataService.getAllData();
+            setMasterData(dataToExport);
+            setIsDataLoaded(true);
+         } catch(e) {
+             alert("Veri indirilemedi.");
+             setIsLoading(false);
+             return;
+         }
+         setIsLoading(false);
+      }
+
+      if (dataToExport.length === 0) {
+          alert("Dışa aktarılacak veri yok.");
+          return;
+      }
+
       try {
           await dataService.exportToExcel();
       } catch (e) {
@@ -268,17 +303,36 @@ const App: React.FC = () => {
                         <div className="w-full md:w-64 flex flex-col gap-3">
                              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 h-full flex flex-col justify-center">
                                  <h3 className="font-bold text-sm text-gray-500 uppercase mb-4 tracking-wider">Bakım Araçları</h3>
+                                 
                                  <button
                                      onClick={handleExport}
-                                     disabled={masterData.length === 0}
                                      className="w-full mb-3 flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-medium transition-colors border border-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                  >
                                      <Download size={18} />
                                      Verileri Yedekle
                                  </button>
+
+                                 <button
+                                     onClick={() => setIsManualModalOpen(true)}
+                                     disabled={isLoading}
+                                     className="w-full mb-3 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-medium transition-colors border border-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                 >
+                                     <PenLine size={18} />
+                                     Manuel Veri Ekle
+                                 </button>
+
+                                 <button
+                                     onClick={handleRemoveDuplicates}
+                                     disabled={isLoading}
+                                     className="w-full mb-3 flex items-center justify-center gap-2 px-4 py-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg font-medium transition-colors border border-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                 >
+                                     <Eraser size={18} />
+                                     Yinelenenleri Sil
+                                 </button>
+
                                  <button 
                                      onClick={() => setShowClearConfirm(true)}
-                                     disabled={masterData.length === 0 || isLoading}
+                                     disabled={isLoading}
                                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg font-medium transition-colors border border-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                  >
                                      <Trash2 size={18} />
@@ -291,21 +345,38 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {isInitializingData ? (
-             <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8">
-                 <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
-                 <p className="text-gray-500 font-medium">Bulut veritabanından veriler yükleniyor...</p>
+        {!isDataLoaded ? (
+             <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-200 mt-4">
+                 <div className="bg-blue-50 p-6 rounded-full mb-6">
+                     <Cloud className="w-12 h-12 text-blue-500" />
+                 </div>
+                 <h3 className="text-xl font-bold text-gray-900 mb-2">Veri Seti Hazır</h3>
+                 <p className="text-gray-500 max-w-md mb-8">
+                     {user.role === 'admin' 
+                      ? 'Veritabanı trafiğini yönetmek için veriler otomatik yüklenmez. İşlem yapmak için yükleyin.' 
+                      : 'Mevcut analiz verilerini görüntülemek için lütfen yükleme yapın.'}
+                 </p>
+                 
+                 <button 
+                    onClick={handleLoadData}
+                    disabled={isLoading}
+                    className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xl shadow-blue-500/30 flex items-center gap-3 transition-all transform hover:scale-105 disabled:opacity-70 disabled:scale-100"
+                 >
+                    {isLoading ? <Loader2 size={24} className="animate-spin" /> : <PlayCircle size={24} />}
+                    {isLoading ? 'Veriler İndiriliyor...' : 'Verileri Yükle ve Başla'}
+                 </button>
+                 <p className="text-xs text-gray-400 mt-4">Yaklaşık veri boyutu: 50MB+</p>
              </div>
         ) : (
             masterData.length === 0 ? (
             user.role === 'admin' ? null : (
                 <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-200 mt-8">
-                    <div className="bg-blue-50 p-6 rounded-full mb-6 animate-pulse">
-                        <Database className="w-12 h-12 text-blue-400" />
+                    <div className="bg-gray-100 p-6 rounded-full mb-6">
+                        <Database className="w-12 h-12 text-gray-400" />
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Veri Bekleniyor</h3>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Veri Bulunamadı</h3>
                     <p className="text-gray-500 max-w-md">
-                        Sistemde henüz aktif bir veri seti bulunmamaktadır. Yönetici veri yüklediğinde burada otomatik olarak görünecektir.
+                        Sistemde henüz veri bulunmamaktadır.
                     </p>
                 </div>
             )
@@ -323,7 +394,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {!isInitializingData && user.role === 'free' && masterData.length > 0 && <UpgradeAlert />}
+      {!isLoading && isDataLoaded && user.role === 'free' && masterData.length > 0 && <UpgradeAlert />}
 
       {isManualModalOpen && (
           <ManualEntryModal 
