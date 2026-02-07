@@ -14,7 +14,7 @@ export const dataService = {
   // Save Data
   saveData: async (data: MatchData[]): Promise<void> => {
     try {
-      console.log("Veri sıkıştırılıyor...");
+      console.log(`Veri sıkıştırılıyor (${data.length} satır)...`);
       
       const jsonString = JSON.stringify(data);
       const buf = new TextEncoder().encode(jsonString);
@@ -38,6 +38,7 @@ export const dataService = {
         handleUploadUrl: '/api/data',
       });
 
+      // Update Local Cache Immediately
       await localforage.clear(); 
       await localforage.setItem('dataVersion', timestamp);
       await localforage.setItem('matchData', data);
@@ -52,13 +53,26 @@ export const dataService = {
 
   appendData: async (newData: MatchData[]): Promise<void> => {
     try {
-      const currentData = await dataService.getAllData();
+      console.log("Mevcut veri sunucudan indiriliyor (Birleştirme için)...");
+      // CRITICAL FIX: Always force update (true) to ensure we have the absolute latest data from server
+      // before appending. relying on cache here causes data overwrite issues.
+      let currentData: MatchData[] = [];
+      try {
+          currentData = await dataService.getAllData(true);
+      } catch (e) {
+          console.warn("Mevcut veri çekilemedi, boş liste ile başlanıyor.", e);
+          currentData = [];
+      }
+      
       const startId = currentData.length > 0 ? Math.max(...currentData.map(d => d.id)) + 1 : 0;
       const preparedNewData = newData.map((item, index) => ({
           ...item,
           id: startId + index
       }));
+
       const combinedData = [...currentData, ...preparedNewData];
+      console.log(`Birleştirme tamamlandı. Eski: ${currentData.length}, Yeni: ${preparedNewData.length}, Toplam: ${combinedData.length}`);
+      
       await dataService.saveData(combinedData);
     } catch (error) {
        console.error("Append Error:", error);
@@ -84,7 +98,6 @@ export const dataService = {
       const clientTimestamp = Date.now();
 
       // STEP 1: Get Metadata (Version & URL)
-      // We explicitly ask for JSON metadata, no redirects involved.
       const metaRes = await fetch(`/api/data?type=metadata&_t=${clientTimestamp}`, { 
           cache: 'no-store',
           headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
@@ -171,7 +184,8 @@ export const dataService = {
   },
 
   removeDuplicates: async (): Promise<{ removedCount: number }> => {
-    const allData = await dataService.getAllData();
+    // Force get fresh data to be sure
+    const allData = await dataService.getAllData(true);
     const uniqueMap = new Map<string, MatchData>();
     let originalCount = allData.length;
 

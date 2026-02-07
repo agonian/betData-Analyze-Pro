@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { VirtualTable } from './components/VirtualTable';
 import { Auth } from './components/Auth';
@@ -15,6 +15,9 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [masterData, setMasterData] = useState<MatchData[]>([]);
   
+  // UseRef to track user state inside intervals
+  const userRef = useRef<User | null>(null);
+
   // Loading States
   const [isInitializing, setIsInitializing] = useState(true); // App Startup
   const [isLoading, setIsLoading] = useState(false); // Manual Actions
@@ -30,7 +33,12 @@ const App: React.FC = () => {
   // State for timer
   const [now, setNow] = useState(Date.now());
 
-  // 1. Initialize Session on Mount
+  // Keep ref in sync with state
+  useEffect(() => {
+      userRef.current = user;
+  }, [user]);
+
+  // 1. Initialize Session on Mount & Start Timer
   useEffect(() => {
      const initApp = async () => {
          const savedUser = authService.getCurrentUser();
@@ -45,8 +53,34 @@ const App: React.FC = () => {
      initApp();
 
      const interval = setInterval(() => {
-         setNow(Date.now());
+         const currentTime = Date.now();
+         setNow(currentTime);
+
+         // REAL-TIME PREMIUM EXPIRATION CHECK
+         // Check if user is premium and time has passed
+         if (userRef.current && userRef.current.role === 'premium' && userRef.current.premiumExpiresAt) {
+             if (currentTime > userRef.current.premiumExpiresAt) {
+                 console.log("Süre doldu, demo moda düşürülüyor...");
+                 
+                 const downgradedUser: User = { 
+                     ...userRef.current, 
+                     role: 'free', 
+                     premiumExpiresAt: undefined 
+                 };
+                 
+                 // Update State
+                 setUser(downgradedUser);
+                 
+                 // Update Backend & LocalStorage
+                 authService.updateUser(downgradedUser).then(() => {
+                     localStorage.setItem('betdata_user_session', JSON.stringify(downgradedUser));
+                 });
+                 
+                 alert("Premium üyelik süreniz sona erdi. Hesabınız ücretsiz plana geçirildi.");
+             }
+         }
      }, 1000);
+     
      return () => clearInterval(interval);
   }, []);
 
@@ -112,25 +146,20 @@ const App: React.FC = () => {
         const parsedData = await parseExcelFile(file);
         
         if (isAppendMode) {
-            if (!isDataLoaded && masterData.length === 0) {
-               try {
-                  const currentData = await dataService.getAllData();
-                  const startId = currentData.length > 0 ? Math.max(...currentData.map(d => d.id)) + 1 : 0;
-                  const preparedNewData = parsedData.map((item, index) => ({ ...item, id: startId + index }));
-                  const combinedData = [...currentData, ...preparedNewData];
-                  await dataService.saveData(combinedData);
-                  setMasterData(combinedData);
-               } catch(e) { throw e; }
-            } else {
-               await dataService.appendData(parsedData);
-               const allData = await dataService.getAllData(true); // Force sync after append
-               setMasterData(allData);
-            }
+            // Append Logic: The service now strictly handles downloading fresh data before appending.
+            // We do not need to check 'masterData' here, we trust the service.
+            await dataService.appendData(parsedData);
+            
+            // After append, force sync to update UI
+            const allData = await dataService.getAllData(true);
+            setMasterData(allData);
+            
             alert(`${parsedData.length} satır başarıyla eklendi ve buluta kaydedildi.`);
         } else {
+            // Overwrite Logic
             await dataService.saveData(parsedData);
             setMasterData(parsedData);
-            alert("Veriler başarıyla buluta yüklendi.");
+            alert("Veriler başarıyla buluta yüklendi (Öncekiler silindi).");
         }
         setIsDataLoaded(true);
     } catch (err) {
@@ -194,6 +223,7 @@ const App: React.FC = () => {
 
   const handleExport = async () => {
       let dataToExport = masterData;
+      // Ensure we have data before exporting
       if (!isDataLoaded || masterData.length === 0) {
          setIsLoading(true);
          try {
