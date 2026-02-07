@@ -15,24 +15,26 @@ export const dataService = {
   saveData: async (data: MatchData[]): Promise<void> => {
     try {
       console.log("Veri sıkıştırılıyor...");
-      const jsonString = JSON.stringify(data);
       
-      // 1. Compress Data using fflate
+      // Use TextEncoder for reliable UTF-8 encoding
+      const jsonString = JSON.stringify(data);
+      const buf = new TextEncoder().encode(jsonString);
+      
+      // 1. Compress Data using fflate.zip (Compatible with standard ZIP tools)
       const zipData = await new Promise<Uint8Array>((resolve, reject) => {
-        const bytes = fflate.strToU8(jsonString);
         // data.json is the internal file name inside the zip
-        fflate.zip({ 'data.json': bytes }, { level: 6 }, (err: Error | null, out: Uint8Array) => {
-            if (err) reject(err);
-            else resolve(out);
+        fflate.zip({ 'data.json': buf }, { level: 6 }, (err: Error | null, out: Uint8Array) => {
+            if (err) return reject(err);
+            resolve(out);
         });
       });
 
       // 2. Generate Dynamic Filename (data_v{TIMESTAMP}.zip)
-      // This ensures the URL is always unique, bypassing all cache layers
       const timestamp = Date.now();
       const filename = `data_v${timestamp}.zip`;
 
-      const zipFile = new File([zipData], filename, { type: 'application/zip' });
+      // TS FIX: Cast zipData to 'any' to bypass strict BlobPart type mismatch (Uint8Array vs BlobPart)
+      const zipFile = new File([zipData as any], filename, { type: 'application/zip' });
       
       console.log(`Yükleniyor: ${filename} (${(zipFile.size / 1024 / 1024).toFixed(2)}MB)`);
 
@@ -43,7 +45,6 @@ export const dataService = {
       });
 
       // 4. Update Local Cache Immediately
-      // We clear first to prevent "QuotaExceededError" on phones
       await localforage.clear(); 
       await localforage.setItem('dataVersion', timestamp);
       await localforage.setItem('matchData', data);
@@ -80,7 +81,6 @@ export const dataService = {
       const clientTimestamp = Date.now();
       
       // 1. Get Server Version (Dynamic)
-      // We request 'type=version' which makes the server check the latest file
       const versionRes = await fetch(`/api/data?type=version&_t=${clientTimestamp}`, { 
           cache: 'no-store',
           headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
@@ -106,7 +106,6 @@ export const dataService = {
       console.log(forceUpdate ? "Zorla güncelleme yapılıyor." : "Yeni versiyon bulundu, indiriliyor...", serverVersion);
 
       // 3. Download Latest Zip
-      // The API redirects to the actual blob url of the latest file
       const response = await fetch(`/api/data?_t=${clientTimestamp}`, {
           cache: 'no-store',
           headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
@@ -125,8 +124,9 @@ export const dataService = {
               
               const fileContent = unzipped['data.json'];
               if (fileContent) {
-                  // fflate.strFromU8 converts Uint8Array to string
-                  resolve(fflate.strFromU8(fileContent));
+                  // Use TextDecoder for reliable decoding
+                  const decoded = new TextDecoder().decode(fileContent);
+                  resolve(decoded);
               } else {
                   reject(new Error("Zip arşivi bozuk veya data.json eksik."));
               }
