@@ -1,6 +1,21 @@
 import { User } from '../types';
 
+const SESSION_KEY = 'betdata_user_session';
+
 export const authService = {
+  // Load user from local storage on app start
+  getCurrentUser: (): User | null => {
+    try {
+      const storedUser = localStorage.getItem(SESSION_KEY);
+      if (storedUser) {
+        return JSON.parse(storedUser);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  },
+
   // Fetch users from API (Force fresh data)
   getUsers: async (): Promise<User[]> => {
     try {
@@ -68,10 +83,20 @@ export const authService = {
         // Update user on server
         const updatedUser = { ...user, role: 'free' as const, premiumExpiresAt: undefined };
         await authService.updateUser(updatedUser);
+        
+        // Save updated session
+        localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
         return { success: true, message: 'Premium süreniz doldu, ücretsiz plana geçirildiniz.', user: updatedUser };
     }
 
+    // Save Session
+    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+
     return { success: true, message: 'Giriş başarılı.', user };
+  },
+
+  logout: () => {
+    localStorage.removeItem(SESSION_KEY);
   },
 
   updateUser: async (updatedUser: User): Promise<boolean> => {
@@ -111,7 +136,6 @@ export const authService = {
   },
 
   addPremiumTime: async (username: string, durationMinutes: number) => {
-    // Need to fetch specific user first to calculate time
     const users = await authService.getUsers();
     const user = users.find(u => u.username === username);
     

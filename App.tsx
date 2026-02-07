@@ -9,13 +9,17 @@ import { parseExcelFile } from './utils/excelParser';
 import { MatchData, User } from './types';
 import { authService } from './services/authService';
 import { dataService } from './services/dataService';
-import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X, Download, Cloud, PlayCircle } from 'lucide-react';
+import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X, Download, Cloud, PlayCircle, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [masterData, setMasterData] = useState<MatchData[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDataLoaded, setIsDataLoaded] = useState(false); // New state to control bandwidth usage
+  
+  // Loading States
+  const [isInitializing, setIsInitializing] = useState(true); // App Startup
+  const [isLoading, setIsLoading] = useState(false); // Manual Actions
+  const [isDataLoaded, setIsDataLoaded] = useState(false); // Valid Data Present
+  
   const [error, setError] = useState<string | null>(null);
   
   // Admin Options
@@ -26,43 +30,65 @@ const App: React.FC = () => {
   // State for timer
   const [now, setNow] = useState(Date.now());
 
+  // 1. Initialize Session on Mount
   useEffect(() => {
+     const initApp = async () => {
+         const savedUser = authService.getCurrentUser();
+         if (savedUser) {
+             setUser(savedUser);
+             // If we have a user, immediately try to load/sync data
+             await performSmartDataSync();
+         }
+         setIsInitializing(false);
+     };
+     
+     initApp();
+
      const interval = setInterval(() => {
          setNow(Date.now());
      }, 1000);
      return () => clearInterval(interval);
   }, []);
 
-  // REMOVED: Automatic data loading useEffect to save Vercel bandwidth
+  // Helper for Smart Data Sync
+  const performSmartDataSync = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+          // dataService.getAllData already handles the "Check Version -> Load DB or Download" logic
+          const savedData = await dataService.getAllData();
+          if (savedData && savedData.length > 0) {
+            setMasterData(savedData);
+            setIsDataLoaded(true);
+          } else {
+             setIsDataLoaded(false);
+          }
+      } catch (err) {
+          console.error("Auto-sync error:", err);
+          // Don't show error on auto-sync, just stay in empty state
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
   const handleLogin = (userData: User) => {
     setUser(userData);
-    setIsDataLoaded(false); // Reset on login
+    setIsDataLoaded(false); 
     setMasterData([]);
+    // Trigger sync after login
+    performSmartDataSync();
   };
 
   const handleLogout = () => {
+    authService.logout();
     setUser(null);
     setMasterData([]);
     setIsDataLoaded(false);
   };
 
-  // Manual Trigger to Load Data
+  // Manual Trigger (Re-check version)
   const handleLoadData = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const savedData = await dataService.getAllData();
-      if (savedData && savedData.length > 0) {
-        setMasterData(savedData);
-      }
-      setIsDataLoaded(true);
-    } catch (err) {
-      console.error("Veri yüklenemedi:", err);
-      setError("Sunucudan veri çekilemedi.");
-    } finally {
-      setIsLoading(false);
-    }
+      await performSmartDataSync();
   };
 
   const handleFileUpload = async (file: File) => {
@@ -72,10 +98,7 @@ const App: React.FC = () => {
         const parsedData = await parseExcelFile(file);
         
         if (isAppendMode) {
-            // Must have existing data loaded to append correctly with IDs
             if (!isDataLoaded && masterData.length === 0) {
-               // Try to load first invisibly or warn? Let's just append to empty if not loaded but that risks ID collision if we don't know last ID.
-               // Better strategy: Load current data first if not loaded
                try {
                   const currentData = await dataService.getAllData();
                   const startId = currentData.length > 0 ? Math.max(...currentData.map(d => d.id)) + 1 : 0;
@@ -110,6 +133,7 @@ const App: React.FC = () => {
     try {
       await dataService.clearData();
       setMasterData([]);
+      setIsDataLoaded(false);
       setError(null);
     } catch (e) {
       setError("Veriler silinirken hata oluştu.");
@@ -155,7 +179,6 @@ const App: React.FC = () => {
   };
 
   const handleExport = async () => {
-      // If data isn't loaded to memory yet, fetch it first
       let dataToExport = masterData;
       if (!isDataLoaded || masterData.length === 0) {
          setIsLoading(true);
@@ -205,6 +228,16 @@ const App: React.FC = () => {
       }
       return null;
   }, [user, now]);
+
+  // Loading Screen for Auth Check
+  if (isInitializing) {
+      return (
+          <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-500">
+              <Loader2 size={40} className="animate-spin text-blue-600 mb-4" />
+              <p>Sistem başlatılıyor...</p>
+          </div>
+      );
+  }
 
   if (!user) {
     return <Auth onLogin={handleLogin} />;
@@ -345,51 +378,67 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {!isDataLoaded ? (
-             <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-200 mt-4">
-                 <div className="bg-blue-50 p-6 rounded-full mb-6">
-                     <Cloud className="w-12 h-12 text-blue-500" />
-                 </div>
-                 <h3 className="text-xl font-bold text-gray-900 mb-2">Veri Seti Hazır</h3>
-                 <p className="text-gray-500 max-w-md mb-8">
-                     {user.role === 'admin' 
-                      ? 'Veritabanı trafiğini yönetmek için veriler otomatik yüklenmez. İşlem yapmak için yükleyin.' 
-                      : 'Mevcut analiz verilerini görüntülemek için lütfen yükleme yapın.'}
-                 </p>
-                 
-                 <button 
-                    onClick={handleLoadData}
-                    disabled={isLoading}
-                    className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xl shadow-blue-500/30 flex items-center gap-3 transition-all transform hover:scale-105 disabled:opacity-70 disabled:scale-100"
-                 >
-                    {isLoading ? <Loader2 size={24} className="animate-spin" /> : <PlayCircle size={24} />}
-                    {isLoading ? 'Veriler İndiriliyor...' : 'Verileri Yükle ve Başla'}
-                 </button>
-                 <p className="text-xs text-gray-400 mt-4">Yaklaşık veri boyutu: 50MB+</p>
-             </div>
-        ) : (
-            masterData.length === 0 ? (
-            user.role === 'admin' ? null : (
-                <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-200 mt-8">
-                    <div className="bg-gray-100 p-6 rounded-full mb-6">
-                        <Database className="w-12 h-12 text-gray-400" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Veri Bulunamadı</h3>
-                    <p className="text-gray-500 max-w-md">
-                        Sistemde henüz veri bulunmamaktadır.
-                    </p>
-                </div>
-            )
-            ) : (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col gap-4">
-                <VirtualTable data={displayedData} isDemo={user.role === 'free'} />
-                <div className="mt-2 text-center text-xs text-gray-400">
-                {user.role === 'free' 
-                    ? `Demo Modu: ${masterData.length} kayıttan sadece 50 tanesi gösteriliyor.`
-                    : `Toplam ${masterData.length.toLocaleString()} kayıt listeleniyor.`
-                }
-                </div>
+        {/* Loading State or Data View */}
+        {isLoading ? (
+            <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-200 mt-4">
+                 <Loader2 className="w-16 h-16 text-blue-600 animate-spin mb-4" />
+                 <h3 className="text-xl font-bold text-gray-900 mb-2">Veriler Senkronize Ediliyor...</h3>
+                 <p className="text-gray-500">Versiyon kontrolü yapılıyor ve veriler yükleniyor.</p>
+                 <p className="text-xs text-gray-400 mt-2">İnternet hızınıza bağlı olarak büyük güncellemeler zaman alabilir.</p>
             </div>
+        ) : (
+            !isDataLoaded ? (
+                 <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-200 mt-4">
+                     <div className="bg-blue-50 p-6 rounded-full mb-6">
+                         <Cloud className="w-12 h-12 text-blue-500" />
+                     </div>
+                     <h3 className="text-xl font-bold text-gray-900 mb-2">Veri Seti Hazır</h3>
+                     <p className="text-gray-500 max-w-md mb-8">
+                         {user.role === 'admin' 
+                          ? 'Veritabanı trafiğini yönetmek için veriler otomatik yüklenmez. İşlem yapmak için yükleyin.' 
+                          : 'Sistem şu an veriye ulaşamıyor veya sunucuda veri yok. Yeniden denemek için tıklayın.'}
+                     </p>
+                     
+                     <button 
+                        onClick={handleLoadData}
+                        disabled={isLoading}
+                        className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-xl shadow-blue-500/30 flex items-center gap-3 transition-all transform hover:scale-105 disabled:opacity-70 disabled:scale-100"
+                     >
+                        <PlayCircle size={24} />
+                        Tekrar Dene (Zorla Yükle)
+                     </button>
+                 </div>
+            ) : (
+                masterData.length === 0 ? (
+                    user.role === 'admin' ? null : (
+                        <div className="flex flex-col items-center justify-center h-[50vh] text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-200 mt-8">
+                            <div className="bg-gray-100 p-6 rounded-full mb-6">
+                                <Database className="w-12 h-12 text-gray-400" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">Veri Bulunamadı</h3>
+                            <p className="text-gray-500 max-w-md">
+                                Sistemde henüz veri bulunmamaktadır veya silinmiş olabilir.
+                            </p>
+                            <button 
+                                onClick={handleLoadData}
+                                className="mt-4 px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                <RefreshCw className="inline w-4 h-4 mr-1" />
+                                Yenile
+                            </button>
+                        </div>
+                    )
+                ) : (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col gap-4">
+                        <VirtualTable data={displayedData} isDemo={user.role === 'free'} />
+                        <div className="mt-2 text-center text-xs text-gray-400">
+                        {user.role === 'free' 
+                            ? `Demo Modu: ${masterData.length} kayıttan sadece 50 tanesi gösteriliyor.`
+                            : `Toplam ${masterData.length.toLocaleString()} kayıt listeleniyor.`
+                        }
+                        </div>
+                    </div>
+                )
             )
         )}
       </main>
