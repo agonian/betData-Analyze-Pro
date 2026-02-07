@@ -1,12 +1,12 @@
 import { handleUpload } from '@vercel/blob/client';
-import { list } from '@vercel/blob';
+import { list, del } from '@vercel/blob';
 
 export const config = {
   runtime: 'nodejs',
 };
 
-const DATA_FILE_ZIP = 'main-data.zip';
-const VERSION_FILE = 'version.json';
+// We now look for files matching this pattern prefix
+const DATA_FILE_PREFIX = 'data_v';
 
 export default async function handler(request: any, response: any) {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
@@ -15,48 +15,68 @@ export default async function handler(request: any, response: any) {
     return response.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN not configured' });
   }
 
-  // GET: Fetch Data or Version
+  // GET: Find latest data, return version or redirect to file
   if (request.method === 'GET') {
-    // AGGRESSIVE CACHE BUSTING HEADERS
+    // 1. HEADERS: Force no-cache everywhere
     response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     response.setHeader('Pragma', 'no-cache');
     response.setHeader('Expires', '0');
     response.setHeader('Surrogate-Control', 'no-store');
 
     try {
-        const { type } = request.query; // ?type=version or default (data)
-        // Always fetch fresh list from Vercel Blob
+        const { type } = request.query;
+
+        // 2. LIST: Get all blobs to find the latest version
         const { blobs } = await list({ token });
 
+        // Filter for our data files: data_v{timestamp}.zip
+        // Sort by uploadedAt (descending) -> Newest first
+        const dataFiles = blobs
+            .filter((b: any) => b.pathname.startsWith(DATA_FILE_PREFIX) && b.pathname.endsWith('.zip'))
+            .sort((a: any, b: any) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+
+        const latestFile = dataFiles[0];
+
+        // 3. CLEANUP: Delete old files asynchronously to save storage
+        // We keep the latest one, delete the rest.
+        if (dataFiles.length > 1) {
+            const filesToDelete = dataFiles.slice(1).map((b: any) => b.url);
+            // Fire and forget delete (don't await to keep response fast)
+            if (filesToDelete.length > 0) {
+                 del(filesToDelete, { token }).catch(console.error);
+            }
+        }
+
+        // Handle: No data exists yet
+        if (!latestFile) {
+            if (type === 'version') return response.status(200).json({ timestamp: 0 });
+            return response.status(404).json({ error: 'Data not found' });
+        }
+
+        // 4. RESPONSE: Version Info
         if (type === 'version') {
-            const versionBlob = blobs.find((b: any) => b.pathname === VERSION_FILE);
-            if (!versionBlob) return response.status(200).json({ timestamp: 0 }); // No version yet
+            // Extract timestamp from filename if possible, otherwise use upload time
+            // Format: data_v1700000000000.zip
+            const match = latestFile.pathname.match(/data_v(\d+)\.zip/);
+            const versionTimestamp = match ? parseInt(match[1]) : new Date(latestFile.uploadedAt).getTime();
             
-            // Bypass server-side fetch cache
-            const res = await fetch(versionBlob.url, { cache: 'no-store' });
-            const data = await res.json();
-            return response.status(200).json(data);
+            return response.status(200).json({ timestamp: versionTimestamp });
         } 
+        
+        // 5. RESPONSE: Redirect to Download
         else {
-            // Get the ZIP file URL
-            const dataBlob = blobs.find((b: any) => b.pathname === DATA_FILE_ZIP);
-            if (!dataBlob) return response.status(404).json({ error: 'Data not found' });
-            
-            // CRITICAL FIX FOR MOBILE:
-            // Append a random query parameter to the BLOB URL itself.
-            // This forces the browser to treat the redirect target as a new resource,
-            // bypassing the browser's aggressive cache of the static file.
-            const cacheBustUrl = `${dataBlob.url}?cb=${Date.now()}`;
-            
+            // Append random query param to ensure browser treats it as a fresh URL
+            const cacheBustUrl = `${latestFile.url}?cb=${Date.now()}`;
             return response.redirect(cacheBustUrl);
         }
 
     } catch (e: any) {
+        console.error("API Error:", e);
         return response.status(500).json({ error: e.message || 'Unknown error' });
     }
   }
 
-  // POST: Generate a client upload token
+  // POST: Generate Token for Upload
   if (request.method === 'POST') {
     const body = request.body;
 
@@ -65,19 +85,21 @@ export default async function handler(request: any, response: any) {
         body,
         request,
         onBeforeGenerateToken: async (pathname) => {
-          // Allow both the zip file and the version file
-          if (pathname !== DATA_FILE_ZIP && pathname !== VERSION_FILE) {
-            throw new Error('Invalid filename. Only main-data.zip and version.json allowed.');
+          // Allow dynamic filenames: data_v{number}.zip
+          // We assume the client generates the name
+          if (!pathname.startsWith(DATA_FILE_PREFIX) || !pathname.endsWith('.zip')) {
+             throw new Error('Invalid filename format. Must be data_v{timestamp}.zip');
           }
+
           return {
-            allowedContentTypes: ['application/zip', 'application/json', 'application/x-zip-compressed'],
+            allowedContentTypes: ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'],
             tokenPayload: JSON.stringify({
               userId: 'admin',
             }),
           };
         },
         onUploadCompleted: async ({ blob, tokenPayload }) => {
-          console.log('Blob upload completed', blob.pathname);
+          console.log('New data version uploaded:', blob.pathname);
         },
       });
 
