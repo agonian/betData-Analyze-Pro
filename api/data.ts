@@ -17,6 +17,13 @@ export default async function handler(request: any, response: any) {
 
   // GET: Fetch Data or Version
   if (request.method === 'GET') {
+    // AGGRESSIVE CACHE BUSTING
+    // This is crucial for mobile devices to prevent stale data
+    response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    response.setHeader('Pragma', 'no-cache');
+    response.setHeader('Expires', '0');
+    response.setHeader('Surrogate-Control', 'no-store');
+
     try {
         const { type } = request.query; // ?type=version or default (data)
         const { blobs } = await list({ token });
@@ -25,7 +32,7 @@ export default async function handler(request: any, response: any) {
             const versionBlob = blobs.find((b: any) => b.pathname === VERSION_FILE);
             if (!versionBlob) return response.status(200).json({ timestamp: 0 }); // No version yet
             
-            // Bypass cache for version check
+            // Bypass cache for version check fetch from Blob storage
             const res = await fetch(versionBlob.url, { cache: 'no-store' });
             const data = await res.json();
             return response.status(200).json(data);
@@ -35,7 +42,8 @@ export default async function handler(request: any, response: any) {
             const dataBlob = blobs.find((b: any) => b.pathname === DATA_FILE_ZIP);
             if (!dataBlob) return response.status(404).json({ error: 'Data not found' });
             
-            // Redirect to the blob URL so the client can download the binary directly
+            // Redirect to the blob URL
+            // Even though we redirect, the headers set above apply to this 307 response
             return response.redirect(dataBlob.url);
         }
 

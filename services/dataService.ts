@@ -83,8 +83,13 @@ export const dataService = {
   // Get All Data: Smart Fetching (Cache -> Version Check -> Download -> Unzip)
   getAllData: async (): Promise<MatchData[]> => {
     try {
-      // 1. Get Server Version
-      const versionRes = await fetch('/api/data?type=version', { cache: 'no-store' });
+      const timestamp = Date.now();
+      
+      // 1. Get Server Version - Add timestamp to force bypass cache
+      const versionRes = await fetch(`/api/data?type=version&_t=${timestamp}`, { 
+          cache: 'no-store',
+          headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
+      });
       const serverVersionData = await versionRes.json();
       const serverTimestamp = serverVersionData.timestamp || 0;
 
@@ -95,15 +100,19 @@ export const dataService = {
       if (localTimestamp && localTimestamp === serverTimestamp) {
           const cachedData = await localforage.getItem<MatchData[]>('matchData');
           if (cachedData) {
-              console.log("Veriler yerel önbellekten yüklendi.");
+              console.log("Veriler yerel önbellekten yüklendi (Versiyon eşleşti).");
               return cachedData;
           }
       }
 
-      console.log("Yeni veri indiriliyor...");
+      console.log("Yeni veri indiriliyor... Sunucu Zamanı:", serverTimestamp);
 
-      // 4. Download Zip (If version mismatch or no cache)
-      const response = await fetch('/api/data'); // Returns 307 Redirect to Blob URL
+      // 4. Download Zip - Add timestamp to force bypass cache
+      const response = await fetch(`/api/data?_t=${timestamp}`, {
+          cache: 'no-store',
+          headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
+      });
+      
       if (response.status === 404) return [];
       
       const blob = await response.blob();
