@@ -9,7 +9,7 @@ import { parseExcelFile } from './utils/excelParser';
 import { MatchData, User } from './types';
 import { authService } from './services/authService';
 import { dataService } from './services/dataService';
-import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X, Download, Cloud, PlayCircle, RefreshCw } from 'lucide-react';
+import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X, Download, Cloud, PlayCircle, RefreshCw, Zap } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -51,12 +51,13 @@ const App: React.FC = () => {
   }, []);
 
   // Helper for Smart Data Sync
-  const performSmartDataSync = async () => {
+  // force: true ignores version check and forces download
+  const performSmartDataSync = async (force: boolean = false) => {
       setIsLoading(true);
       setError(null);
       try {
           // dataService.getAllData already handles the "Check Version -> Load DB or Download" logic
-          const savedData = await dataService.getAllData();
+          const savedData = await dataService.getAllData(force);
           if (savedData && savedData.length > 0) {
             setMasterData(savedData);
             setIsDataLoaded(true);
@@ -65,7 +66,9 @@ const App: React.FC = () => {
           }
       } catch (err) {
           console.error("Auto-sync error:", err);
-          // Don't show error on auto-sync, just stay in empty state
+          if (force) {
+            setError("Veri güncellenemedi. İnternet bağlantınızı kontrol edin.");
+          }
       } finally {
           setIsLoading(false);
       }
@@ -88,7 +91,8 @@ const App: React.FC = () => {
 
   // Manual Trigger (Re-check version)
   const handleLoadData = async () => {
-      await performSmartDataSync();
+      // FORCE update when clicking "Retry" or "Refresh"
+      await performSmartDataSync(true);
   };
 
   const handleFileUpload = async (file: File) => {
@@ -109,7 +113,7 @@ const App: React.FC = () => {
                } catch(e) { throw e; }
             } else {
                await dataService.appendData(parsedData);
-               const allData = await dataService.getAllData(); // Sync
+               const allData = await dataService.getAllData(true); // Force sync after append
                setMasterData(allData);
             }
             alert(`${parsedData.length} satır başarıyla eklendi ve buluta kaydedildi.`);
@@ -146,7 +150,7 @@ const App: React.FC = () => {
       setIsLoading(true);
       try {
           await dataService.appendData([newData]);
-          const freshData = await dataService.getAllData();
+          const freshData = await dataService.getAllData(true);
           setMasterData(freshData);
           setIsManualModalOpen(false);
           alert("Kayıt başarıyla eklendi.");
@@ -164,7 +168,7 @@ const App: React.FC = () => {
       try {
           const result = await dataService.removeDuplicates();
           if (result.removedCount > 0) {
-              const freshData = await dataService.getAllData();
+              const freshData = await dataService.getAllData(true);
               setMasterData(freshData);
               alert(`İşlem tamamlandı: ${result.removedCount} adet yinelenen satır silindi.`);
           } else {
@@ -278,7 +282,7 @@ const App: React.FC = () => {
                 {user.role === 'admin' ? 'YÖNETİCİ' : user.role === 'premium' ? 'PREMIUM ÜYE' : 'DEMO HESAP'}
              </div>
 
-             <div className="h-6 w-px bg-slate-700 mx-1"></div>
+             <div className="h-6 w-px bg-slate-700 mx-1 hidden sm:block"></div>
 
              <div className="text-right hidden md:block">
                  <div className="text-sm font-medium text-white">{user.username}</div>
@@ -423,8 +427,8 @@ const App: React.FC = () => {
                                 onClick={handleLoadData}
                                 className="mt-4 px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-medium transition-colors"
                             >
-                                <RefreshCw className="inline w-4 h-4 mr-1" />
-                                Yenile
+                                <Zap className="inline w-4 h-4 mr-1" />
+                                Zorla Yenile
                             </button>
                         </div>
                     )

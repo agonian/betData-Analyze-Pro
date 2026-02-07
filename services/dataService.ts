@@ -50,6 +50,8 @@ export const dataService = {
       });
 
       // 4. Update local cache immediately
+      // CLEAR old data first to avoid corruption or memory issues
+      await localforage.clear(); 
       await localforage.setItem('dataVersion', newVersion.timestamp);
       await localforage.setItem('matchData', data);
 
@@ -81,11 +83,12 @@ export const dataService = {
   },
 
   // Get All Data: Smart Fetching (Cache -> Version Check -> Download -> Unzip)
-  getAllData: async (): Promise<MatchData[]> => {
+  // forceUpdate: Skips cache check and downloads fresh data
+  getAllData: async (forceUpdate: boolean = false): Promise<MatchData[]> => {
     try {
       const timestamp = Date.now();
       
-      // 1. Get Server Version - Add timestamp to force bypass cache
+      // 1. Get Server Version
       const versionRes = await fetch(`/api/data?type=version&_t=${timestamp}`, { 
           cache: 'no-store',
           headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
@@ -93,21 +96,21 @@ export const dataService = {
       const serverVersionData = await versionRes.json();
       const serverTimestamp = serverVersionData.timestamp || 0;
 
-      // 2. Get Local Version
-      const localTimestamp = await localforage.getItem<number>('dataVersion');
-
-      // 3. Compare
-      if (localTimestamp && localTimestamp === serverTimestamp) {
-          const cachedData = await localforage.getItem<MatchData[]>('matchData');
-          if (cachedData) {
-              console.log("Veriler yerel önbellekten yüklendi (Versiyon eşleşti).");
-              return cachedData;
+      // 2. Check Local Cache (Only if NOT forced)
+      if (!forceUpdate) {
+          const localTimestamp = await localforage.getItem<number>('dataVersion');
+          if (localTimestamp && localTimestamp === serverTimestamp) {
+              const cachedData = await localforage.getItem<MatchData[]>('matchData');
+              if (cachedData) {
+                  console.log("Veriler yerel önbellekten yüklendi (Versiyon eşleşti).");
+                  return cachedData;
+              }
           }
       }
 
-      console.log("Yeni veri indiriliyor... Sunucu Zamanı:", serverTimestamp);
+      console.log(forceUpdate ? "Zorla güncelleme istendi." : "Yeni veri indiriliyor...", "Sunucu Zamanı:", serverTimestamp);
 
-      // 4. Download Zip - Add timestamp to force bypass cache
+      // 3. Download Zip - Add timestamp to force bypass cache
       const response = await fetch(`/api/data?_t=${timestamp}`, {
           cache: 'no-store',
           headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
@@ -119,7 +122,7 @@ export const dataService = {
       const arrayBuffer = await blob.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
 
-      // 5. Unzip
+      // 4. Unzip
       const jsonString = await new Promise<string>((resolve, reject) => {
           fflate.unzip(uint8Array, (err: Error | null, unzipped: fflate.Unzipped) => {
               if (err) return reject(err);
@@ -134,7 +137,8 @@ export const dataService = {
 
       const data = JSON.parse(jsonString);
 
-      // 6. Update Cache
+      // 5. Update Cache (Clear first)
+      await localforage.clear();
       await localforage.setItem('dataVersion', serverTimestamp);
       await localforage.setItem('matchData', data);
       
@@ -143,9 +147,12 @@ export const dataService = {
 
     } catch (error) {
       console.error("Fetch/Unzip Error:", error);
-      // Fallback: try to return cache even if error occurs
-      const cached = await localforage.getItem<MatchData[]>('matchData');
-      return cached || [];
+      // Fallback: try to return cache even if error occurs, unless forced
+      if (!forceUpdate) {
+        const cached = await localforage.getItem<MatchData[]>('matchData');
+        return cached || [];
+      }
+      throw error;
     }
   },
 
