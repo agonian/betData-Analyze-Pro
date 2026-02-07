@@ -23,13 +23,14 @@ export const dataService = {
       // 1. Compress Data using fflate
       const zipData = await new Promise<Uint8Array>((resolve, reject) => {
         const bytes = fflate.strToU8(jsonString);
-        fflate.zip({ 'data.json': bytes }, { level: 6 }, (err, out) => {
+        fflate.zip({ 'data.json': bytes }, { level: 6 }, (err: Error | null, out: Uint8Array) => {
             if (err) reject(err);
             else resolve(out);
         });
       });
 
-      const zipFile = new File([zipData], DATA_FILE_ZIP, { type: 'application/zip' });
+      // Cast zipData to any or BlobPart because TypeScript strictness might conflict with ArrayBufferLike types in some environments
+      const zipFile = new File([zipData as any], DATA_FILE_ZIP, { type: 'application/zip' });
       
       console.log(`Veri sıkıştırıldı. Orijinal: ${(jsonString.length / 1024 / 1024).toFixed(2)}MB, Sıkıştırılmış: ${(zipFile.size / 1024 / 1024).toFixed(2)}MB`);
 
@@ -111,7 +112,7 @@ export const dataService = {
 
       // 5. Unzip
       const jsonString = await new Promise<string>((resolve, reject) => {
-          fflate.unzip(uint8Array, (err, unzipped) => {
+          fflate.unzip(uint8Array, (err: Error | null, unzipped: fflate.Unzipped) => {
               if (err) return reject(err);
               const fileContent = unzipped['data.json'];
               if (fileContent) {
