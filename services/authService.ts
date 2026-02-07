@@ -1,10 +1,16 @@
 import { User } from '../types';
 
 export const authService = {
-  // Fetch users from API
+  // Fetch users from API (Force fresh data)
   getUsers: async (): Promise<User[]> => {
     try {
-      const res = await fetch('/api/users');
+      // Add timestamp to prevent browser caching
+      const res = await fetch(`/api/users?t=${Date.now()}`, {
+        headers: { 
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+      });
       if (!res.ok) return [];
       return await res.json();
     } catch (e) {
@@ -14,33 +20,38 @@ export const authService = {
   },
 
   register: async (username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
-    const users = await authService.getUsers();
-    
-    if (users.find(u => u.username === username)) {
-      return { success: false, message: 'Bu kullanıcı adı zaten alınmış.' };
-    }
-
+    // We do NOT fetch all users here anymore. We let the server handle the check.
     const newUser: User = {
       username,
       password,
       role: 'free'
     };
 
-    const newUsers = [...users, newUser];
-
     try {
-        await fetch('/api/users', {
+        const res = await fetch('/api/users', {
             method: 'POST',
-            body: JSON.stringify(newUsers),
+            body: JSON.stringify({
+                action: 'register',
+                user: newUser
+            }),
             headers: { 'Content-Type': 'application/json' }
         });
-        return { success: true, message: 'Kayıt başarılı.', user: newUser };
+        
+        const data = await res.json();
+        
+        if (res.ok && data.success) {
+            return { success: true, message: 'Kayıt başarılı.', user: newUser };
+        } else {
+            return { success: false, message: data.message || 'Kayıt başarısız.' };
+        }
     } catch (e) {
         return { success: false, message: 'Sunucu hatası.' };
     }
   },
 
   login: async (username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> => {
+    // For login, we still fetch the list to check credentials client-side for simplicity,
+    // but relying on getUsers() which now forces a fresh fetch.
     const users = await authService.getUsers();
     const user = users.find(u => u.username === username && u.password === password);
 
@@ -64,39 +75,46 @@ export const authService = {
   },
 
   updateUser: async (updatedUser: User): Promise<boolean> => {
-    const users = await authService.getUsers();
-    const index = users.findIndex(u => u.username === updatedUser.username);
-    if (index !== -1) {
-      users[index] = { ...users[index], ...updatedUser };
-      await fetch('/api/users', {
+    try {
+      const res = await fetch('/api/users', {
           method: 'POST',
-          body: JSON.stringify(users),
+          body: JSON.stringify({
+              action: 'update',
+              user: updatedUser
+          }),
           headers: { 'Content-Type': 'application/json' }
       });
-      return true;
+      const data = await res.json();
+      return data.success;
+    } catch (e) {
+        console.error("Update error:", e);
+        return false;
     }
-    return false;
   },
 
   deleteUser: async (username: string): Promise<boolean> => {
-    let users = await authService.getUsers();
-    const initialLength = users.length;
-    users = users.filter(u => u.username !== username);
-    
-    if (users.length < initialLength) {
-        await fetch('/api/users', {
+    try {
+        const res = await fetch('/api/users', {
             method: 'POST',
-            body: JSON.stringify(users),
+            body: JSON.stringify({
+                action: 'delete',
+                username: username
+            }),
             headers: { 'Content-Type': 'application/json' }
         });
-        return true;
+        const data = await res.json();
+        return data.success;
+    } catch (e) {
+        console.error("Delete error:", e);
+        return false;
     }
-    return false;
   },
 
   addPremiumTime: async (username: string, durationMinutes: number) => {
+    // Need to fetch specific user first to calculate time
     const users = await authService.getUsers();
     const user = users.find(u => u.username === username);
+    
     if (user) {
         const now = Date.now();
         const startTime = (user.role === 'premium' && user.premiumExpiresAt && user.premiumExpiresAt > now) 
