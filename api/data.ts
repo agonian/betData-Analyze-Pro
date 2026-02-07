@@ -2,7 +2,7 @@ import { handleUpload } from '@vercel/blob/client';
 import { list } from '@vercel/blob';
 
 export const config = {
-  runtime: 'node',
+  runtime: 'nodejs',
 };
 
 const DATA_FILE = 'main-data.json';
