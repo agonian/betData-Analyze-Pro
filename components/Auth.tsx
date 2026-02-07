@@ -135,19 +135,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 </button>
             </form>
 
-            <div className="mt-6 pt-6 border-t border-gray-100">
-                <div className="text-xs text-center text-gray-400 mb-4">Demo Hesap</div>
-                <div className="flex justify-center">
-                    <button 
-                        onClick={() => { setUsername('admin'); setPassword('admin123'); }}
-                        className="text-xs flex flex-col items-center justify-center p-2 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100 transition-colors w-full"
-                    >
-                        <ShieldCheck className="w-4 h-4 mb-1 text-slate-600" />
-                        <span className="font-semibold text-slate-700">Admin Girişi</span>
-                        <span className="text-[10px] text-slate-500">Pass: admin123</span>
-                    </button>
-                </div>
-            </div>
+            
         </div>
       </div>
     </div>
