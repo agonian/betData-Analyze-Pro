@@ -88,7 +88,7 @@ export default async function handler(request: any, response: any) {
           };
         },
         onUploadCompleted: async ({ blob, tokenPayload }) => {
-          console.log('New data version uploaded:', blob.pathname);
+          console.log('New data version uploaded::', blob.pathname);
         },
       });
 
