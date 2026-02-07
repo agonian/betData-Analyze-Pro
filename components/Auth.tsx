@@ -14,6 +14,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,9 +41,18 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             
             const result = await authService.register(username, password);
             if (result.success) {
-                setSuccessMsg('Kayıt başarılı! Şimdi giriş yapabilirsiniz.');
-                setIsLogin(true);
-                setPassword(''); 
+                // Show preparing state to user while we wait a bit
+                setIsPreparing(true);
+                setSuccessMsg('Kayıt başarılı! Hesap hazırlanıyor, lütfen bekleyin...');
+                
+                // Artificial Delay to help consistency
+                setTimeout(() => {
+                    setIsPreparing(false);
+                    setSuccessMsg('Hesabınız hazır! Şimdi giriş yapabilirsiniz.');
+                    setIsLogin(true);
+                    setPassword('');
+                }, 2500);
+                 
             } else {
                 setError(result.message);
             }
@@ -50,7 +60,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     } catch (err) {
         setError("Bir hata oluştu. Lütfen bağlantınızı kontrol edin.");
     } finally {
-        setIsLoading(false);
+        if (!isPreparing) {
+           setIsLoading(false);
+        }
     }
   };
 
@@ -72,13 +84,15 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             {/* Toggle Tabs */}
             <div className="flex bg-gray-100 p-1 rounded-lg mb-8">
                 <button
-                    onClick={() => { setIsLogin(true); setError(''); setSuccessMsg(''); }}
+                    onClick={() => { if(!isPreparing) { setIsLogin(true); setError(''); setSuccessMsg(''); } }}
+                    disabled={isPreparing}
                     className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
                     Giriş Yap
                 </button>
                 <button
-                    onClick={() => { setIsLogin(false); setError(''); setSuccessMsg(''); }}
+                    onClick={() => { if(!isPreparing) { setIsLogin(false); setError(''); setSuccessMsg(''); } }}
+                    disabled={isPreparing}
                     className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
                     Kayıt Ol
@@ -95,7 +109,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         onChange={(e) => setUsername(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                         placeholder="Kullanıcı adınız"
-                        disabled={isLoading}
+                        disabled={isLoading || isPreparing}
                     />
                 </div>
                 <div>
@@ -107,7 +121,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                         placeholder="••••••••"
-                        disabled={isLoading}
+                        disabled={isLoading || isPreparing}
                     />
                 </div>
 
@@ -120,18 +134,18 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 
                 {successMsg && (
                     <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 p-3 rounded-lg border border-green-100">
-                        <ShieldCheck size={16} />
+                        {isPreparing ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
                         {successMsg}
                     </div>
                 )}
 
                 <button 
                     type="submit"
-                    disabled={isLoading}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50"
+                    disabled={isLoading || isPreparing}
+                    className={`w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50 ${isPreparing ? 'cursor-wait' : ''}`}
                 >
-                    {isLoading ? <Loader2 size={18} className="animate-spin" /> : (isLogin ? <LogIn size={18} /> : <UserPlus size={18} />)}
-                    {isLogin ? 'Giriş Yap' : 'Kayıt Ol'}
+                    {(isLoading || isPreparing) ? <Loader2 size={18} className="animate-spin" /> : (isLogin ? <LogIn size={18} /> : <UserPlus size={18} />)}
+                    {isPreparing ? 'Hesap Oluşturuluyor...' : (isLogin ? 'Giriş Yap' : 'Kayıt Ol')}
                 </button>
             </form>
 

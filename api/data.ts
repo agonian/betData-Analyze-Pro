@@ -5,7 +5,8 @@ export const config = {
   runtime: 'nodejs',
 };
 
-const DATA_FILE = 'main-data.json';
+const DATA_FILE_ZIP = 'main-data.zip';
+const VERSION_FILE = 'version.json';
 
 export default async function handler(request: any, response: any) {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
@@ -14,31 +15,36 @@ export default async function handler(request: any, response: any) {
     return response.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN not configured' });
   }
 
-  // GET: Redirect to the actual Blob URL for downloading data
-  // We do this to find the dynamic URL if needed, though with addRandomSuffix: false it's cleaner.
+  // GET: Fetch Data or Version
   if (request.method === 'GET') {
     try {
+        const { type } = request.query; // ?type=version or default (data)
         const { blobs } = await list({ token });
-        const dataBlob = blobs.find((b: any) => b.pathname === DATA_FILE);
 
-        if (!dataBlob) {
-            return response.status(404).json({ error: 'Data not found' });
+        if (type === 'version') {
+            const versionBlob = blobs.find((b: any) => b.pathname === VERSION_FILE);
+            if (!versionBlob) return response.status(200).json({ timestamp: 0 }); // No version yet
+            
+            // Bypass cache for version check
+            const res = await fetch(versionBlob.url, { cache: 'no-store' });
+            const data = await res.json();
+            return response.status(200).json(data);
+        } 
+        else {
+            // Get the ZIP file URL
+            const dataBlob = blobs.find((b: any) => b.pathname === DATA_FILE_ZIP);
+            if (!dataBlob) return response.status(404).json({ error: 'Data not found' });
+            
+            // Redirect to the blob URL so the client can download the binary directly
+            return response.redirect(dataBlob.url);
         }
-
-        // Fetch the data server-side to avoid CORS or just return URL?
-        // Returning JSON content directly is safer for the app logic
-        const res = await fetch(dataBlob.url);
-        if (!res.ok) throw new Error('Failed to fetch blob');
-        
-        const data = await res.json();
-        return response.status(200).json(data);
 
     } catch (e: any) {
         return response.status(500).json({ error: e.message || 'Unknown error' });
     }
   }
 
-  // POST: Generate a client upload token (for handling large files > 4.5MB)
+  // POST: Generate a client upload token
   if (request.method === 'POST') {
     const body = request.body;
 
@@ -47,19 +53,19 @@ export default async function handler(request: any, response: any) {
         body,
         request,
         onBeforeGenerateToken: async (pathname) => {
-          // Only allow uploading main-data.json
-          if (pathname !== DATA_FILE) {
-            throw new Error('Invalid filename. Only main-data.json allowed.');
+          // Allow both the zip file and the version file
+          if (pathname !== DATA_FILE_ZIP && pathname !== VERSION_FILE) {
+            throw new Error('Invalid filename. Only main-data.zip and version.json allowed.');
           }
           return {
-            allowedContentTypes: ['application/json'],
+            allowedContentTypes: ['application/zip', 'application/json', 'application/x-zip-compressed'],
             tokenPayload: JSON.stringify({
-              userId: 'admin', // In real app, verify session here
+              userId: 'admin',
             }),
           };
         },
         onUploadCompleted: async ({ blob, tokenPayload }) => {
-          console.log('Blob upload completed', blob, tokenPayload);
+          console.log('Blob upload completed', blob.pathname);
         },
       });
 

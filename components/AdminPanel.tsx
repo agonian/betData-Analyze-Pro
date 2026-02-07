@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { User } from '../types';
 import { authService } from '../services/authService';
-import { Trash2, Ban, CheckCircle2, Crown, RefreshCcw, AlertTriangle, X } from 'lucide-react';
+import { Trash2, Ban, CheckCircle2, Crown, RefreshCcw, AlertTriangle, X, CalendarClock, Loader2 } from 'lucide-react';
 
 interface ModalConfig {
   isOpen: boolean;
@@ -11,8 +11,10 @@ interface ModalConfig {
 
 export const AdminPanel: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
-  const [selectedDuration, setSelectedDuration] = useState<number>(1);
+  // Use string for datetime-local input value (YYYY-MM-DDThh:mm)
+  const [selectedDate, setSelectedDate] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const [processingUser, setProcessingUser] = useState<string | null>(null);
   
   const [modalConfig, setModalConfig] = useState<ModalConfig>({ 
     isOpen: false, 
@@ -32,6 +34,12 @@ export const AdminPanel: React.FC = () => {
 
   useEffect(() => {
     loadUsers();
+    
+    // Set default date to tomorrow same time
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setMinutes(tomorrow.getMinutes() - tomorrow.getTimezoneOffset());
+    setSelectedDate(tomorrow.toISOString().slice(0, 16));
   }, []);
 
   const requestDelete = (user: User) => {
@@ -49,6 +57,9 @@ export const AdminPanel: React.FC = () => {
   const handleConfirmAction = async () => {
     if (!modalConfig.user) return;
     setIsLoading(true);
+
+    // Artificial delay to allow blob propagation
+    await new Promise(r => setTimeout(r, 1000));
 
     if (modalConfig.type === 'delete') {
         const success = await authService.deleteUser(modalConfig.user.username);
@@ -71,19 +82,48 @@ export const AdminPanel: React.FC = () => {
     closeModal();
   };
 
-  const handleGrantPremium = async (username: string) => {
-    setIsLoading(true);
-    await authService.addPremiumTime(username, selectedDuration);
-    await loadUsers();
-    setIsLoading(false);
+  const handleSetPremium = async (username: string) => {
+    if (!selectedDate) {
+        alert("Lütfen geçerli bir tarih seçin.");
+        return;
+    }
+
+    const timestamp = new Date(selectedDate).getTime();
+    if (isNaN(timestamp)) {
+         alert("Tarih formatı hatalı.");
+         return;
+    }
+
+    setProcessingUser(username);
+    
+    // 1. Calculate duration in minutes relative to NOW (backend expects minutes currently, or we update backend)
+    // Actually, authService.addPremiumTime takes minutes. Let's update the User object directly here using updateUser
+    // to allow setting a specific timestamp which is safer.
+    
+    const user = users.find(u => u.username === username);
+    if(user) {
+        const updatedUser = { ...user, role: 'premium' as const, premiumExpiresAt: timestamp };
+        
+        const success = await authService.updateUser(updatedUser);
+        
+        if(success) {
+             // Artificial delay for consistency
+             await new Promise(r => setTimeout(r, 1500));
+             await loadUsers();
+        } else {
+            alert("İşlem başarısız.");
+        }
+    }
+    
+    setProcessingUser(null);
   };
 
   const formatTime = (timestamp?: number) => {
     if (!timestamp) return '-';
-    if (timestamp < Date.now()) return <span className="text-red-500">Süresi Doldu</span>;
+    if (timestamp < Date.now()) return <span className="text-red-500 font-bold">Süresi Doldu</span>;
     
     const date = new Date(timestamp);
-    return date.toLocaleString('tr-TR');
+    return date.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
   };
 
   const calculateRemaining = (timestamp?: number) => {
@@ -106,15 +146,29 @@ export const AdminPanel: React.FC = () => {
            <Crown className="text-amber-400" size={20} />
            Kullanıcı Yönetim Paneli
         </h2>
-        <button 
-            type="button"
-            onClick={loadUsers} 
-            disabled={isLoading}
-            className={`p-2 hover:bg-slate-700 rounded-full transition-colors ${isLoading ? 'animate-spin' : ''}`}
-            title="Listeyi Yenile"
-        >
-            <RefreshCcw size={16} />
-        </button>
+        <div className="flex gap-4 items-center">
+            {/* Global Date Picker for Quick Actions */}
+            <div className="flex items-center gap-2 bg-slate-700 px-3 py-1 rounded-lg">
+                <CalendarClock size={14} className="text-slate-300" />
+                <span className="text-xs text-slate-300 mr-1">Bitiş Tarihi:</span>
+                <input 
+                    type="datetime-local"
+                    className="bg-transparent text-white text-xs outline-none cursor-pointer"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                />
+            </div>
+            
+            <button 
+                type="button"
+                onClick={loadUsers} 
+                disabled={isLoading}
+                className={`p-2 hover:bg-slate-700 rounded-full transition-colors ${isLoading ? 'animate-spin' : ''}`}
+                title="Listeyi Yenile"
+            >
+                <RefreshCcw size={16} />
+            </button>
+        </div>
       </div>
       
       <div className="p-4 overflow-x-auto">
@@ -124,7 +178,7 @@ export const AdminPanel: React.FC = () => {
                     <th className="px-4 py-3">Kullanıcı Adı</th>
                     <th className="px-4 py-3">Durum</th>
                     <th className="px-4 py-3">Premium Bitiş</th>
-                    <th className="px-4 py-3">Süre Yönetimi</th>
+                    <th className="px-4 py-3 text-right">Premium Onayı</th>
                     <th className="px-4 py-3 text-right">İşlemler</th>
                 </tr>
             </thead>
@@ -153,43 +207,24 @@ export const AdminPanel: React.FC = () => {
                                <span className="text-[10px] text-blue-500 font-medium">{calculateRemaining(user.premiumExpiresAt)}</span>
                            </div>
                         </td>
-                        <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                                <select 
-                                    className="border border-gray-300 rounded px-2 py-1 text-xs max-w-[120px]"
-                                    onChange={(e) => setSelectedDuration(Number(e.target.value))}
-                                    value={selectedDuration}
-                                >
-                                    <optgroup label="Ekle">
-                                        <option value={1}>+1 Dakika</option>
-                                        <option value={1440}>+1 Gün</option>
-                                        <option value={10080}>+1 Hafta</option>
-                                        <option value={43200}>+1 Ay</option>
-                                        <option value={129600}>+3 Ay</option>
-                                    </optgroup>
-                                    <optgroup label="Çıkar">
-                                        <option value={-1440}>-1 Gün</option>
-                                        <option value={-10080}>-1 Hafta</option>
-                                        <option value={-43200}>-1 Ay</option>
-                                    </optgroup>
-                                </select>
-                                <button 
-                                    type="button"
-                                    onClick={() => handleGrantPremium(user.username)}
-                                    disabled={isLoading}
-                                    className="p-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50"
-                                    title="Süreyi Uygula"
-                                >
-                                    <CheckCircle2 size={16} />
-                                </button>
-                            </div>
+                        <td className="px-4 py-3 text-right">
+                           <button 
+                                type="button"
+                                onClick={() => handleSetPremium(user.username)}
+                                disabled={processingUser === user.username || isLoading}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-wait"
+                                title="Yukarıda seçili tarihi bu kullanıcıya uygula"
+                            >
+                                {processingUser === user.username ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                Uygula
+                            </button>
                         </td>
                         <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-2">
                                 <button 
                                     type="button"
                                     onClick={() => requestBan(user)}
-                                    disabled={isLoading}
+                                    disabled={isLoading || processingUser !== null}
                                     className={`p-1.5 rounded transition-colors disabled:opacity-50 ${user.role === 'banned' ? 'bg-gray-500 text-white hover:bg-gray-600' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
                                     title={user.role === 'banned' ? "Yasağı Kaldır" : "Yasakla"}
                                 >
@@ -198,7 +233,7 @@ export const AdminPanel: React.FC = () => {
                                 <button 
                                     type="button"
                                     onClick={() => requestDelete(user)}
-                                    disabled={isLoading}
+                                    disabled={isLoading || processingUser !== null}
                                     className="p-1.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors disabled:opacity-50"
                                     title="Kullanıcıyı Sil"
                                 >
