@@ -64,10 +64,11 @@ const App: React.FC = () => {
           } else {
              setIsDataLoaded(false);
           }
-      } catch (err) {
+      } catch (err: any) {
           console.error("Auto-sync error:", err);
           if (force) {
-            setError("Veri güncellenemedi. İnternet bağlantınızı kontrol edin.");
+            // Show the actual error message to help debugging
+            setError(err.message || "Veri güncellenemedi. İnternet bağlantınızı kontrol edin.");
           }
       } finally {
           setIsLoading(false);
@@ -318,9 +319,9 @@ const App: React.FC = () => {
 
       <main className="flex-1 max-w-[98%] w-full mx-auto py-6 px-4 pb-32">
         {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center text-red-700">
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center text-red-700 animate-in slide-in-from-top-2">
             <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
-            {error}
+            <span className="text-sm font-medium break-words">{error}</span>
           </div>
         )}
 

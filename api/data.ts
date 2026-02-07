@@ -5,7 +5,6 @@ export const config = {
   runtime: 'nodejs',
 };
 
-// We now look for files matching this pattern prefix
 const DATA_FILE_PREFIX = 'data_v';
 
 export default async function handler(request: any, response: any) {
@@ -15,9 +14,9 @@ export default async function handler(request: any, response: any) {
     return response.status(500).json({ error: 'BLOB_READ_WRITE_TOKEN not configured' });
   }
 
-  // GET: Find latest data, return version or redirect to file
+  // GET: Find latest data
   if (request.method === 'GET') {
-    // 1. HEADERS: Force no-cache everywhere
+    // 1. HEADERS: Force no-cache
     response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     response.setHeader('Pragma', 'no-cache');
     response.setHeader('Expires', '0');
@@ -26,22 +25,18 @@ export default async function handler(request: any, response: any) {
     try {
         const { type } = request.query;
 
-        // 2. LIST: Get all blobs to find the latest version
+        // 2. LIST: Get all blobs
         const { blobs } = await list({ token });
 
-        // Filter for our data files: data_v{timestamp}.zip
-        // Sort by uploadedAt (descending) -> Newest first
         const dataFiles = blobs
             .filter((b: any) => b.pathname.startsWith(DATA_FILE_PREFIX) && b.pathname.endsWith('.zip'))
             .sort((a: any, b: any) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
 
         const latestFile = dataFiles[0];
 
-        // 3. CLEANUP: Delete old files asynchronously to save storage
-        // We keep the latest one, delete the rest.
+        // 3. CLEANUP: Delete old files
         if (dataFiles.length > 1) {
             const filesToDelete = dataFiles.slice(1).map((b: any) => b.url);
-            // Fire and forget delete
             if (filesToDelete.length > 0) {
                  del(filesToDelete, { token }).catch(console.error);
             }
@@ -49,24 +44,25 @@ export default async function handler(request: any, response: any) {
 
         // Handle: No data exists yet
         if (!latestFile) {
-            if (type === 'version') return response.status(200).json({ timestamp: 0 });
+            if (type === 'version' || type === 'metadata') return response.status(200).json({ timestamp: 0, url: null });
             return response.status(404).json({ error: 'Data not found' });
         }
 
-        // 4. RESPONSE: Version Info
-        if (type === 'version') {
-            const match = latestFile.pathname.match(/data_v(\d+)\.zip/);
-            const versionTimestamp = match ? parseInt(match[1]) : new Date(latestFile.uploadedAt).getTime();
-            return response.status(200).json({ timestamp: versionTimestamp });
-        } 
+        // Extract timestamp
+        const match = latestFile.pathname.match(/data_v(\d+)\.zip/);
+        const versionTimestamp = match ? parseInt(match[1]) : new Date(latestFile.uploadedAt).getTime();
         
-        // 5. RESPONSE: Redirect to Download
-        else {
-            // Use 307 Temporary Redirect to prevent caching of the redirect itself
-            // Append random query param to the destination URL as well
-            const cacheBustUrl = `${latestFile.url}?cb=${Date.now()}`;
-            return response.redirect(307, cacheBustUrl);
-        }
+        // 4. RESPONSE
+        // Instead of redirecting (which fails on some mobile fetch implementations),
+        // we return the Direct Download URL and Metadata.
+        
+        const cacheBustUrl = `${latestFile.url}?cb=${Date.now()}`;
+        
+        return response.status(200).json({ 
+            timestamp: versionTimestamp,
+            url: cacheBustUrl,
+            filename: latestFile.pathname
+        });
 
     } catch (e: any) {
         console.error("API Error:", e);
@@ -74,7 +70,7 @@ export default async function handler(request: any, response: any) {
     }
   }
 
-  // POST: Generate Token for Upload
+  // POST: Upload
   if (request.method === 'POST') {
     const body = request.body;
 
@@ -86,12 +82,9 @@ export default async function handler(request: any, response: any) {
           if (!pathname.startsWith(DATA_FILE_PREFIX) || !pathname.endsWith('.zip')) {
              throw new Error('Invalid filename format. Must be data_v{timestamp}.zip');
           }
-
           return {
             allowedContentTypes: ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'],
-            tokenPayload: JSON.stringify({
-              userId: 'admin',
-            }),
+            tokenPayload: JSON.stringify({ userId: 'admin' }),
           };
         },
         onUploadCompleted: async ({ blob, tokenPayload }) => {
