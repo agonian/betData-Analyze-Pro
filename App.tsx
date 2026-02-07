@@ -9,7 +9,7 @@ import { parseExcelFile } from './utils/excelParser';
 import { MatchData, User } from './types';
 import { authService } from './services/authService';
 import { dataService } from './services/dataService';
-import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X, Download, Cloud, PlayCircle, RefreshCw, Zap } from 'lucide-react';
+import { Database, AlertCircle, LogOut, Crown, Shield, Clock, Loader2, CopyPlus, Eraser, FilePlus2, Trash2, PenLine, X, Download, Cloud, PlayCircle, RefreshCw, Zap, Wrench } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -93,6 +93,15 @@ const App: React.FC = () => {
   const handleLoadData = async () => {
       // FORCE update when clicking "Retry" or "Refresh"
       await performSmartDataSync(true);
+  };
+
+  // NUCLEAR OPTION for mobile users
+  const handleHardReset = async () => {
+      if(!window.confirm("Bu işlem telefonunuzdaki tüm önbelleği temizleyecek, verileri sıfırdan indirecek ve sayfayı yenileyecektir. Devam edilsin mi?")) return;
+      
+      setIsLoading(true);
+      await dataService.nukeData();
+      window.location.reload();
   };
 
   const handleFileUpload = async (file: File) => {
@@ -288,6 +297,14 @@ const App: React.FC = () => {
                  <div className="text-sm font-medium text-white">{user.username}</div>
              </div>
              
+             <button
+                onClick={handleHardReset}
+                className="p-2 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
+                title="Sorun Gider / Verileri Sıfırla"
+             >
+                <Wrench size={18} />
+             </button>
+
              <button 
                 onClick={handleLogout}
                 className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"

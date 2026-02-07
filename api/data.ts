@@ -41,7 +41,7 @@ export default async function handler(request: any, response: any) {
         // We keep the latest one, delete the rest.
         if (dataFiles.length > 1) {
             const filesToDelete = dataFiles.slice(1).map((b: any) => b.url);
-            // Fire and forget delete (don't await to keep response fast)
+            // Fire and forget delete
             if (filesToDelete.length > 0) {
                  del(filesToDelete, { token }).catch(console.error);
             }
@@ -55,19 +55,17 @@ export default async function handler(request: any, response: any) {
 
         // 4. RESPONSE: Version Info
         if (type === 'version') {
-            // Extract timestamp from filename if possible, otherwise use upload time
-            // Format: data_v1700000000000.zip
             const match = latestFile.pathname.match(/data_v(\d+)\.zip/);
             const versionTimestamp = match ? parseInt(match[1]) : new Date(latestFile.uploadedAt).getTime();
-            
             return response.status(200).json({ timestamp: versionTimestamp });
         } 
         
         // 5. RESPONSE: Redirect to Download
         else {
-            // Append random query param to ensure browser treats it as a fresh URL
+            // Use 307 Temporary Redirect to prevent caching of the redirect itself
+            // Append random query param to the destination URL as well
             const cacheBustUrl = `${latestFile.url}?cb=${Date.now()}`;
-            return response.redirect(cacheBustUrl);
+            return response.redirect(307, cacheBustUrl);
         }
 
     } catch (e: any) {
@@ -85,8 +83,6 @@ export default async function handler(request: any, response: any) {
         body,
         request,
         onBeforeGenerateToken: async (pathname) => {
-          // Allow dynamic filenames: data_v{number}.zip
-          // We assume the client generates the name
           if (!pathname.startsWith(DATA_FILE_PREFIX) || !pathname.endsWith('.zip')) {
              throw new Error('Invalid filename format. Must be data_v{timestamp}.zip');
           }

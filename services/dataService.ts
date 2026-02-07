@@ -16,24 +16,22 @@ export const dataService = {
     try {
       console.log("Veri sıkıştırılıyor...");
       
-      // Use TextEncoder for reliable UTF-8 encoding
       const jsonString = JSON.stringify(data);
       const buf = new TextEncoder().encode(jsonString);
       
-      // 1. Compress Data using fflate.zip (Compatible with standard ZIP tools)
+      // 1. Compress Data
       const zipData = await new Promise<Uint8Array>((resolve, reject) => {
-        // data.json is the internal file name inside the zip
         fflate.zip({ 'data.json': buf }, { level: 6 }, (err: Error | null, out: Uint8Array) => {
             if (err) return reject(err);
             resolve(out);
         });
       });
 
-      // 2. Generate Dynamic Filename (data_v{TIMESTAMP}.zip)
+      // 2. Generate Dynamic Filename
       const timestamp = Date.now();
       const filename = `data_v${timestamp}.zip`;
 
-      // TS FIX: Cast zipData to 'any' to bypass strict BlobPart type mismatch (Uint8Array vs BlobPart)
+      // TS FIX: Cast to 'any' to solve Uint8Array vs BlobPart mismatch
       const zipFile = new File([zipData as any], filename, { type: 'application/zip' });
       
       console.log(`Yükleniyor: ${filename} (${(zipFile.size / 1024 / 1024).toFixed(2)}MB)`);
@@ -44,7 +42,7 @@ export const dataService = {
         handleUploadUrl: '/api/data',
       });
 
-      // 4. Update Local Cache Immediately
+      // 4. Update Local Cache
       await localforage.clear(); 
       await localforage.setItem('dataVersion', timestamp);
       await localforage.setItem('matchData', data);
@@ -75,37 +73,52 @@ export const dataService = {
     }
   },
 
-  // Get All Data: Checks version, if new version exists on server, deletes local DB and fetches new one
+  // NUCLEAR OPTION: Wipes everything
+  nukeData: async (): Promise<void> => {
+      try {
+          console.log("🔥 Nükleer temizlik başlatılıyor...");
+          await localforage.clear();
+          localStorage.removeItem('betdata_user_session'); // Optional: Keeps user logged in if commented out
+          console.log("🔥 Yerel veri temizlendi.");
+      } catch (e) {
+          console.error("Nuke Error:", e);
+      }
+  },
+
   getAllData: async (forceUpdate: boolean = false): Promise<MatchData[]> => {
     try {
       const clientTimestamp = Date.now();
-      
-      // 1. Get Server Version (Dynamic)
-      const versionRes = await fetch(`/api/data?type=version&_t=${clientTimestamp}`, { 
-          cache: 'no-store',
-          headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
-      });
-      
-      if (!versionRes.ok) return [];
-      
-      const serverData = await versionRes.json();
-      const serverVersion = serverData.timestamp || 0;
+      let serverVersion = 0;
 
-      // 2. Check Local Cache (Only if NOT forced)
+      // STEP 1: If NOT forcing, check version normally
       if (!forceUpdate) {
-          const localVersion = await localforage.getItem<number>('dataVersion');
-          if (localVersion && localVersion === serverVersion) {
-              const cachedData = await localforage.getItem<MatchData[]>('matchData');
-              if (cachedData) {
-                  console.log("Güncel veri önbellekten yüklendi.");
-                  return cachedData;
-              }
-          }
+          try {
+            const versionRes = await fetch(`/api/data?type=version&_t=${clientTimestamp}`, { 
+                cache: 'no-store',
+                headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
+            });
+            if (versionRes.ok) {
+                const serverData = await versionRes.json();
+                serverVersion = serverData.timestamp || 0;
+
+                const localVersion = await localforage.getItem<number>('dataVersion');
+                if (localVersion && localVersion === serverVersion) {
+                    const cachedData = await localforage.getItem<MatchData[]>('matchData');
+                    if (cachedData) {
+                        console.log("Güncel veri önbellekten yüklendi.");
+                        return cachedData;
+                    }
+                }
+            }
+          } catch (e) { console.warn("Versiyon kontrolü hatası, indirme deneniyor..."); }
+      } else {
+          console.log("⚡ FORCE MODE: Versiyon kontrolü atlanıyor, veritabanı temizleniyor...");
+          // If forcing, clear DB *before* fetching to free up space on mobile
+          await localforage.clear();
       }
 
-      console.log(forceUpdate ? "Zorla güncelleme yapılıyor." : "Yeni versiyon bulundu, indiriliyor...", serverVersion);
-
-      // 3. Download Latest Zip
+      // STEP 2: Download Fresh Data
+      console.log("Yeni veri indiriliyor...");
       const response = await fetch(`/api/data?_t=${clientTimestamp}`, {
           cache: 'no-store',
           headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
@@ -117,14 +130,13 @@ export const dataService = {
       const arrayBuffer = await blob.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
 
-      // 4. Unzip (Typed strictly)
+      // STEP 3: Unzip
       const jsonString = await new Promise<string>((resolve, reject) => {
           fflate.unzip(uint8Array, (err: Error | null, unzipped: fflate.Unzipped) => {
               if (err) return reject(err);
               
               const fileContent = unzipped['data.json'];
               if (fileContent) {
-                  // Use TextDecoder for reliable decoding
                   const decoded = new TextDecoder().decode(fileContent);
                   resolve(decoded);
               } else {
@@ -135,18 +147,17 @@ export const dataService = {
 
       const data = JSON.parse(jsonString);
 
-      // 5. Update Cache (Critical: Clear first)
+      // STEP 4: Save to Cache (Clear again to be safe)
       await localforage.clear();
-      await localforage.setItem('dataVersion', serverVersion);
+      await localforage.setItem('dataVersion', serverVersion || clientTimestamp); // Use timestamp if serverVersion missing
       await localforage.setItem('matchData', data);
       
-      console.log("Veri güncellendi.");
+      console.log("Veri başarıyla güncellendi.");
       return Array.isArray(data) ? data : [];
 
     } catch (error) {
       console.error("Veri Çekme Hatası:", error);
       
-      // Fallback: If network fails, try to return whatever is in cache
       if (!forceUpdate) {
         const cached = await localforage.getItem<MatchData[]>('matchData');
         return cached || [];
