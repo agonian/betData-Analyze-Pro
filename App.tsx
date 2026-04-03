@@ -25,6 +25,7 @@ const App: React.FC = () => {
   const [isDataLoaded, setIsDataLoaded] = useState(false); // Valid Data Present
   
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
   // Admin Options
   const [isAppendMode, setIsAppendMode] = useState(false);
@@ -77,7 +78,7 @@ const App: React.FC = () => {
                      localStorage.setItem('betdata_user_session', JSON.stringify(downgradedUser));
                  });
                  
-                 alert("Premium üyelik süreniz sona erdi. Hesabınız ücretsiz plana geçirildi.");
+                 setError("Premium üyelik süreniz sona erdi. Hesabınız ücretsiz plana geçirildi.");
              }
          }
      }, 1000);
@@ -90,6 +91,7 @@ const App: React.FC = () => {
   const performSmartDataSync = async (force: boolean = false) => {
       setIsLoading(true);
       setError(null);
+      setSuccessMessage(null);
       try {
           // dataService.getAllData already handles the "Check Version -> Load DB or Download" logic
           const savedData = await dataService.getAllData(force);
@@ -143,6 +145,7 @@ const App: React.FC = () => {
   const handleFileUpload = async (file: File) => {
     setIsLoading(true);
     setError(null);
+    setSuccessMessage(null);
     try {
         const parsedData = await parseExcelFile(file);
         
@@ -155,12 +158,12 @@ const App: React.FC = () => {
             const allData = await dataService.getAllData(true);
             setMasterData(allData);
             
-            alert(`${parsedData.length} satır başarıyla eklendi ve buluta kaydedildi.`);
+            setSuccessMessage(`${parsedData.length} satır başarıyla eklendi ve buluta kaydedildi.`);
         } else {
             // Overwrite Logic
             await dataService.saveData(parsedData);
             setMasterData(parsedData);
-            alert("Veriler başarıyla buluta yüklendi (Öncekiler silindi).");
+            setSuccessMessage("Veriler başarıyla buluta yüklendi (Öncekiler silindi).");
         }
         setIsDataLoaded(true);
     } catch (err: any) {
@@ -174,6 +177,8 @@ const App: React.FC = () => {
   const confirmClear = async () => {
     setShowClearConfirm(false);
     setIsLoading(true);
+    setError(null);
+    setSuccessMessage(null);
     try {
       await dataService.clearData();
       setMasterData([]);
@@ -188,12 +193,14 @@ const App: React.FC = () => {
 
   const handleManualAdd = async (newData: MatchData) => {
       setIsLoading(true);
+      setError(null);
+      setSuccessMessage(null);
       try {
           await dataService.appendData([newData]);
           const freshData = await dataService.getAllData(true);
           setMasterData(freshData);
           setIsManualModalOpen(false);
-          alert("Kayıt başarıyla eklendi.");
+          setSuccessMessage("Kayıt başarıyla eklendi.");
           setIsDataLoaded(true);
       } catch(e) {
           console.error(e);
@@ -205,14 +212,16 @@ const App: React.FC = () => {
 
   const handleRemoveDuplicates = async () => {
       setIsLoading(true);
+      setError(null);
+      setSuccessMessage(null);
       try {
           const result = await dataService.removeDuplicates();
           if (result.removedCount > 0) {
               const freshData = await dataService.getAllData(true);
               setMasterData(freshData);
-              alert(`İşlem tamamlandı: ${result.removedCount} adet yinelenen satır silindi.`);
+              setSuccessMessage(`İşlem tamamlandı: ${result.removedCount} adet yinelenen satır silindi.`);
           } else {
-              alert("Yinelenen veri bulunamadı.");
+              setSuccessMessage("Yinelenen veri bulunamadı.");
           }
       } catch (e) {
           console.error(e);
@@ -223,6 +232,8 @@ const App: React.FC = () => {
   };
 
   const handleExport = async () => {
+      setError(null);
+      setSuccessMessage(null);
       let dataToExport = masterData;
       // Ensure we have data before exporting
       if (!isDataLoaded || masterData.length === 0) {
@@ -232,7 +243,7 @@ const App: React.FC = () => {
             setMasterData(dataToExport);
             setIsDataLoaded(true);
          } catch(e) {
-             alert("Veri indirilemedi.");
+             setError("Veri indirilemedi.");
              setIsLoading(false);
              return;
          }
@@ -240,7 +251,7 @@ const App: React.FC = () => {
       }
 
       if (dataToExport.length === 0) {
-          alert("Dışa aktarılacak veri yok.");
+          setError("Dışa aktarılacak veri yok.");
           return;
       }
 
@@ -248,7 +259,7 @@ const App: React.FC = () => {
           await dataService.exportToExcel();
       } catch (e) {
           console.error(e);
-          alert("Dışa aktarma başarısız.");
+          setError("Dışa aktarma başarısız.");
       }
   };
 
@@ -353,6 +364,13 @@ const App: React.FC = () => {
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center text-red-700 animate-in slide-in-from-top-2">
             <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
             <span className="text-sm font-medium break-words">{error}</span>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center text-green-700 animate-in slide-in-from-top-2">
+            <Shield className="w-5 h-5 mr-2 flex-shrink-0" />
+            <span className="text-sm font-medium break-words">{successMessage}</span>
           </div>
         )}
 

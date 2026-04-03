@@ -20,10 +20,14 @@ export const dataService = {
       const buf = new TextEncoder().encode(jsonString);
       
       const zipData = await new Promise<Uint8Array>((resolve, reject) => {
-        fflate.zip({ 'data.json': buf }, { level: 6 }, (err: Error | null, out: Uint8Array) => {
-            if (err) return reject(err);
-            resolve(out);
-        });
+        try {
+          fflate.zip({ 'data.json': buf }, { level: 6 }, (err: Error | null, out: Uint8Array) => {
+              if (err) return reject(err);
+              resolve(out);
+          });
+        } catch (e) {
+          reject(e);
+        }
       });
 
       const timestamp = Date.now();
