@@ -9,14 +9,27 @@ export const parseExcelFile = async (file: File): Promise<MatchData[]> => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
         
-        // Convert to JSON
-        const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+            throw new Error("Excel dosyasında sayfa bulunamadı.");
+        }
+
+        let rawData: any[][] = [];
+        let usedSheetName = "";
+
+        // Find the first sheet that has data
+        for (const sheetName of workbook.SheetNames) {
+            const worksheet = workbook.Sheets[sheetName];
+            const sheetData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+            if (sheetData && sheetData.length > 0) {
+                rawData = sheetData;
+                usedSheetName = sheetName;
+                break;
+            }
+        }
         
         if (!rawData || rawData.length === 0) {
-          throw new Error("Excel dosyası boş veya okunamadı.");
+          throw new Error(`Excel dosyası boş veya okunamadı. (İncelenen sayfa sayısı: ${workbook.SheetNames.length})`);
         }
 
         // Assume first row is header
