@@ -9,25 +9,27 @@ interface ManualEntryModalProps {
 
 // User friendly labels mapping
 const LABELS: Record<string, string> = {
-  MacSaati: "Tarih (GG.AA.YYYY)",
-  Saat: "Saat (SS:DD)",
+  Tarih: "Tarih (GG.AA.YYYY)",
   Lig: "Lig",
   EvSahibi: "Ev Sahibi Takım",
-  KonukEkip: "Konuk Takım",
-  IlkYariSonucu: "İlk Yarı Sonucu (1-0)",
-  MacSonucu: "Maç Sonucu (2-1)",
+  Deplasman: "Deplasman Takımı",
+  Iy: "İlk Yarı Sonucu (1-0)",
+  Ms: "Maç Sonucu (2-1)",
+  Iy05: "İY 0.5 (ÜST/ALT)",
+  Iy15: "İY 1.5 (ÜST/ALT)",
+  Ms15: "MS 1.5 (ÜST/ALT)",
+  Ms25: "MS 2.5 (ÜST/ALT)",
+  Ms35: "MS 3.5 (ÜST/ALT)",
+  Kg: "KG (VAR/YOK)",
   Ms1: "Maç Sonu 1 Oranı",
-  Ms0: "Maç Sonu 0 Oranı",
+  MsX: "Maç Sonu X Oranı",
   Ms2: "Maç Sonu 2 Oranı",
-  Alt25: "2.5 Alt Oranı",
   Ust25: "2.5 Üst Oranı",
-  Iy1: "İY 1 Oranı",
-  Iy0: "İY 0 Oranı",
-  Iy2: "İY 2 Oranı",
+  Alt25: "2.5 Alt Oranı",
   KgVar: "KG Var Oranı",
   KgYok: "KG Yok Oranı",
-  SkorDiger: "Skor",
-  AIlkYariMacSonucu: "İY/MS (1/1)"
+  IyMs: "İY/MS (1/1)",
+  Arti6: "6+ Gol"
 };
 
 export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ onClose, onSave }) => {

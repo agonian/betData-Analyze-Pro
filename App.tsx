@@ -5,6 +5,7 @@ import { Auth } from './components/Auth';
 import { UpgradeAlert } from './components/UpgradeAlert';
 import { AdminPanel } from './components/AdminPanel';
 import { ManualEntryModal } from './components/ManualEntryModal';
+import { SmartAssistant } from './components/SmartAssistant';
 import { parseExcelFile } from './utils/excelParser';
 import { MatchData, User } from './types';
 import { authService } from './services/authService';
@@ -489,6 +490,7 @@ const App: React.FC = () => {
                             : `Toplam ${masterData.length.toLocaleString()} kayıt listeleniyor.`
                         }
                         </div>
+                        <SmartAssistant data={displayedData} />
                     </div>
                 )
             )

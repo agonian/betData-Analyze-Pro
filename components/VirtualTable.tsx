@@ -11,37 +11,38 @@ const ROW_HEIGHT = 40;
 
 // Mapping for user-friendly column names
 const COLUMN_LABELS: Record<string, string> = {
-  MacSaati: "Tarih",
-  Saat: "Saat",
+  Tarih: "Tarih",
   Lig: "Lig",
   EvSahibi: "Ev Sahibi",
-  KonukEkip: "Konuk Ekip",
-  IlkYariSonucu: "İY Sonucu",
-  MacSonucu: "Maç Sonucu",
-  Ms1: "MS 1",
-  Ms0: "MS 0",
-  Ms2: "MS 2",
-  Alt25: "2.5 Alt",
+  Deplasman: "Deplasman",
+  Iy: "İY",
+  Ms: "MS",
+  Iy05: "İY 0.5",
+  Iy15: "İY 1.5",
+  Ms15: "MS 1.5",
+  Ms25: "MS 2.5",
+  Ms35: "MS 3.5",
+  Kg: "KG",
+  Ms1: "1",
+  MsX: "X",
+  Ms2: "2",
   Ust25: "2.5 Üst",
-  Iy1: "İY 1",
-  Iy0: "İY 0",
-  Iy2: "İY 2",
+  Alt25: "2.5 Alt",
   KgVar: "KG Var",
   KgYok: "KG Yok",
-  SkorDiger: "Skor",
-  AIlkYariMacSonucu: "İY/MS"
+  IyMs: "İY/MS",
+  Arti6: "6+"
 };
 
 // Helper to determine specific width for each column type
 const getColumnWidth = (col: string): number => {
   // Broad categories
-  if (['EvSahibi', 'KonukEkip'].includes(col)) return 200; // Teams need space
+  if (['EvSahibi', 'Deplasman'].includes(col)) return 200; // Teams need space
   if (['Lig'].includes(col)) return 140; // League needs medium space
-  if (['MacSaati', 'Tarih'].includes(col)) return 100; // Date needs fixed small space
-  if (['Saat'].includes(col)) return 70; // Time needs very small space
-  if (['SkorDiger', 'AIlkYariMacSonucu'].includes(col)) return 120; // Results
+  if (['Tarih'].includes(col)) return 100; // Date needs fixed small space
+  if (['Iy', 'Ms', 'IyMs'].includes(col)) return 80; // Results
   
-  // All other stats/odds (Ms1, Ms0, KgVar etc) are numbers, so they can be narrow
+  // All other stats/odds (Ms1, MsX, KgVar etc) are numbers, so they can be narrow
   return 70; 
 };
 
@@ -294,7 +295,7 @@ export const VirtualTable: React.FC<VirtualTableProps> = ({ data, isDemo = false
                 return (
                 <div
                     key={row.id}
-                    className="absolute left-0 w-full grid hover:bg-blue-50/80 transition-colors border-b border-gray-200/60 bg-white items-center"
+                    className="absolute left-0 w-full grid hover:bg-blue-50/80 transition-colors border-b border-gray-200/60 bg-white items-stretch"
                     style={{ 
                         top, 
                         height: ROW_HEIGHT,
@@ -302,11 +303,32 @@ export const VirtualTable: React.FC<VirtualTableProps> = ({ data, isDemo = false
                         width: totalTableWidth
                     }}
                 >
-                    {COLUMNS.map((col) => (
-                    <div key={`${row.id}-${col}`} className="px-3 text-xs text-gray-700 border-r border-gray-100 truncate">
-                        <span title={String(row[col])}>{row[col]}</span>
-                    </div>
-                    ))}
+                    {COLUMNS.map((col) => {
+                      const value = String(row[col] || '');
+                      let bgClass = '';
+                      let textClass = 'text-gray-700';
+                      
+                      const targetCols = ['Iy05', 'Iy15', 'Ms15', 'Ms25', 'Ms35', 'Kg'];
+                      
+                      if (targetCols.includes(col as string)) {
+                        if (value.toUpperCase() === 'ÜST') {
+                          bgClass = 'bg-green-500';
+                          textClass = 'text-white font-bold';
+                        } else if (value.toUpperCase() === 'ALT') {
+                          bgClass = 'bg-red-500';
+                          textClass = 'text-white font-bold';
+                        }
+                      }
+                      
+                      return (
+                        <div 
+                          key={`${row.id}-${col}`} 
+                          className={`px-3 text-xs border-r border-gray-100 truncate flex items-center h-full ${bgClass} ${textClass}`}
+                        >
+                            <span title={value}>{value}</span>
+                        </div>
+                      );
+                    })}
                 </div>
                 );
             })}

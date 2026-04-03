@@ -9,25 +9,27 @@ export interface User {
 
 export interface MatchData {
   id: number; // Internal ID for keys
-  MacSaati: string;
-  Saat: string;
+  Tarih: string;
   Lig: string;
   EvSahibi: string;
-  KonukEkip: string;
-  IlkYariSonucu: string;
-  MacSonucu: string;
+  Deplasman: string;
+  Iy: string;
+  Ms: string;
+  Iy05: string;
+  Iy15: string;
+  Ms15: string;
+  Ms25: string;
+  Ms35: string;
+  Kg: string;
   Ms1: string | number;
-  Ms0: string | number;
+  MsX: string | number;
   Ms2: string | number;
-  Alt25: string | number;
   Ust25: string | number;
-  Iy1: string | number;
-  Iy0: string | number;
-  Iy2: string | number;
+  Alt25: string | number;
   KgVar: string | number;
   KgYok: string | number;
-  SkorDiger: string;
-  AIlkYariMacSonucu: string;
+  IyMs: string;
+  Arti6: string;
   [key: string]: string | number; // Index signature for dynamic access
 }
 
@@ -36,23 +38,49 @@ export type FilterState = {
 };
 
 export const COLUMNS: (keyof MatchData)[] = [
-  "MacSaati",
-  "Saat",
+  "Tarih",
   "Lig",
   "EvSahibi",
-  "KonukEkip",
-  "IlkYariSonucu",
-  "MacSonucu",
+  "Deplasman",
+  "Iy",
+  "Ms",
+  "Iy05",
+  "Iy15",
+  "Ms15",
+  "Ms25",
+  "Ms35",
+  "Kg",
   "Ms1",
-  "Ms0",
+  "MsX",
   "Ms2",
-  "Alt25",
   "Ust25",
-  "Iy1",
-  "Iy0",
-  "Iy2",
+  "Alt25",
   "KgVar",
   "KgYok",
-  "SkorDiger",
-  "AIlkYariMacSonucu"
+  "IyMs",
+  "Arti6"
 ];
+
+export const EXCEL_HEADERS: Record<string, string[]> = {
+  Tarih: ['Tarih'],
+  Lig: ['LİG', 'Lig'],
+  EvSahibi: ['EV SAHİBİ', 'Ev Sahibi'],
+  Deplasman: ['DEPLASMAN', 'Deplasman'],
+  Iy: ['İY', 'Iy'],
+  Ms: ['MS', 'Ms'],
+  Iy05: ['İY 0.5', 'Iy 0.5'],
+  Iy15: ['İY 1.5', 'Iy 1.5'],
+  Ms15: ['MS 1.5', 'Ms 1.5'],
+  Ms25: ['MS 2.5', 'Ms 2.5'],
+  Ms35: ['MS 3.5', 'Ms 3.5'],
+  Kg: ['KG', 'Kg'],
+  Ms1: ['1', 'Ms1'],
+  MsX: ['X', 'MsX'],
+  Ms2: ['2', 'Ms2'],
+  Ust25: ['2.5 /OVER', 'Ust25'],
+  Alt25: ['2.5 /UNDE', '2.5 /UNDER', 'Alt25'],
+  KgVar: ['YES', 'KgVar'],
+  KgYok: ['NO', 'KgYok'],
+  IyMs: ['İY/MS', 'IyMs'],
+  Arti6: ['6+', 'Arti6']
+};

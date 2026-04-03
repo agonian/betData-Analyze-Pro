@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { MatchData, COLUMNS } from '../types';
+import { MatchData, COLUMNS, EXCEL_HEADERS } from '../types';
 
 export const parseExcelFile = async (file: File): Promise<MatchData[]> => {
   return new Promise((resolve, reject) => {
@@ -21,16 +21,20 @@ export const parseExcelFile = async (file: File): Promise<MatchData[]> => {
 
         const mappedData: MatchData[] = rows.map((row, index) => {
           const item: any = { id: index };
-          // Map based on known columns to ensure structure, or fallback to index
-          COLUMNS.forEach((col, colIndex) => {
-            // Find the index in the file's header that matches our column name
-            // Or just map sequentially if headers aren't perfect
-            const fileHeaderIndex = headers.indexOf(String(col));
+          
+          COLUMNS.forEach((col) => {
+            const possibleHeaders = EXCEL_HEADERS[col as string] || [String(col)];
+            let fileHeaderIndex = -1;
+            
+            for (const header of possibleHeaders) {
+              fileHeaderIndex = headers.findIndex(h => h && h.toString().trim() === header);
+              if (fileHeaderIndex > -1) break;
+            }
+
             if (fileHeaderIndex > -1) {
-               item[col] = row[fileHeaderIndex] || "-";
+               item[col] = row[fileHeaderIndex] ?? "-";
             } else {
-               // Fallback: assume the order in file matches our COLUMNS list
-               item[col] = row[colIndex] || "-";
+               item[col] = "-";
             }
           });
           return item as MatchData;
