@@ -163,9 +163,9 @@ const App: React.FC = () => {
             alert("Veriler başarıyla buluta yüklendi (Öncekiler silindi).");
         }
         setIsDataLoaded(true);
-    } catch (err) {
+    } catch (err: any) {
         console.error(err);
-        setError("Dosya işlenirken veya sunucuya yüklenirken hata oluştu.");
+        setError(err.message || "Dosya işlenirken veya sunucuya yüklenirken hata oluştu.");
     } finally {
         setIsLoading(false);
     }

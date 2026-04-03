@@ -7,17 +7,25 @@ export const parseExcelFile = async (file: File): Promise<MatchData[]> => {
 
     reader.onload = (e) => {
       try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         
         // Convert to JSON
         const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         
+        if (!rawData || rawData.length === 0) {
+          throw new Error("Excel dosyası boş veya okunamadı.");
+        }
+
         // Assume first row is header
         const headers = rawData[0] as string[];
         const rows = rawData.slice(1) as any[][];
+
+        if (rows.length === 0) {
+          throw new Error("Excel dosyasında veri satırı bulunamadı.");
+        }
 
         const mappedData: MatchData[] = rows.map((row, index) => {
           const item: any = { id: index };
@@ -47,6 +55,6 @@ export const parseExcelFile = async (file: File): Promise<MatchData[]> => {
     };
 
     reader.onerror = (error) => reject(error);
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   });
 };
