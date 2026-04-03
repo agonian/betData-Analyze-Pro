@@ -68,13 +68,19 @@ export const dataService = {
           currentData = [];
       }
       
-      const startId = currentData.length > 0 ? Math.max(...currentData.map(d => d.id)) + 1 : 0;
+      let maxId = -1;
+      for (let i = 0; i < currentData.length; i++) {
+        if (currentData[i].id > maxId) {
+          maxId = currentData[i].id;
+        }
+      }
+      const startId = currentData.length > 0 ? maxId + 1 : 0;
       const preparedNewData = newData.map((item, index) => ({
           ...item,
           id: startId + index
       }));
 
-      const combinedData = [...currentData, ...preparedNewData];
+      const combinedData = currentData.concat(preparedNewData);
       console.log(`Birleştirme tamamlandı. Eski: ${currentData.length}, Yeni: ${preparedNewData.length}, Toplam: ${combinedData.length}`);
       
       await dataService.saveData(combinedData);
