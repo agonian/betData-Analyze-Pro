@@ -320,6 +320,20 @@ export const VirtualTable: React.FC<VirtualTableProps> = ({ data, isDemo = false
                           textClass = 'text-white font-bold';
                         }
                       }
+
+                      // New formatting for Arti6 and IyMs
+                      if (col === 'Arti6' && value.trim() === '6+') {
+                        bgClass = 'bg-green-500';
+                        textClass = 'text-white font-bold';
+                      }
+
+                      if (col === 'IyMs') {
+                        const trimmedValue = value.trim();
+                        if (trimmedValue === '1/2' || trimmedValue === '2/1') {
+                          bgClass = 'bg-green-500';
+                          textClass = 'text-white font-bold';
+                        }
+                      }
                       
                       return (
                         <div 
