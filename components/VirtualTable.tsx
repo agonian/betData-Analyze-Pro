@@ -311,10 +311,11 @@ export const VirtualTable: React.FC<VirtualTableProps> = ({ data, isDemo = false
                       const targetCols = ['Iy05', 'Iy15', 'Ms15', 'Ms25', 'Ms35', 'Kg'];
                       
                       if (targetCols.includes(col as string)) {
-                        if (value.toUpperCase() == 'ÜST') {
+                        const upperValue = value.trim().toUpperCase();
+                        if (upperValue === 'ÜST' || upperValue === 'VAR') {
                           bgClass = 'bg-green-500';
                           textClass = 'text-white font-bold';
-                        } else if (value.toUpperCase() == 'ALT') {
+                        } else if (upperValue === 'ALT' || upperValue === 'YOK') {
                           bgClass = 'bg-red-500';
                           textClass = 'text-white font-bold';
                         }
