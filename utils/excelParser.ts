@@ -20,7 +20,7 @@ export const parseExcelFile = async (file: File): Promise<MatchData[]> => {
         // Find the first sheet that has data
         for (const sheetName of workbook.SheetNames) {
             const worksheet = workbook.Sheets[sheetName];
-            const sheetData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+            const sheetData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false }) as any[][];
             if (sheetData && sheetData.length > 0) {
                 rawData = sheetData;
                 usedSheetName = sheetName;
